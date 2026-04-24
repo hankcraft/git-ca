@@ -9,6 +9,10 @@ pub struct Cli {
     /// Skip pre-commit and commit-msg hooks.
     #[arg(short = 'n', long = "no-verify", global = true)]
     pub no_verify: bool,
+
+    /// Copilot model id to use for drafting (overrides the persisted default).
+    #[arg(long = "model")]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]

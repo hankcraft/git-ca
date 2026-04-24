@@ -25,7 +25,7 @@ async fn main() {
 
 async fn run(cli: Cli) -> Result<()> {
     match cli.command {
-        None => commit(cli.no_verify).await,
+        None => commit(cli.model, cli.no_verify).await,
         Some(Command::Auth { action }) => match action {
             AuthAction::Login => auth_login().await,
             AuthAction::Logout => auth_logout().await,
@@ -39,10 +39,13 @@ async fn run(cli: Cli) -> Result<()> {
     }
 }
 
-async fn commit(no_verify: bool) -> Result<()> {
+async fn commit(model_override: Option<String>, no_verify: bool) -> Result<()> {
     let diff = git::diff::staged_diff()?;
     let http = http_client()?;
-    let model = commit_msg::FALLBACK_MODEL.to_string();
+    let cfg = config::Config::load()?;
+    let model = model_override
+        .or(cfg.default_model)
+        .unwrap_or_else(|| commit_msg::FALLBACK_MODEL.to_string());
     eprintln!("git-ca: drafting message with {model}…");
     let draft = copilot::call_authed(&http, |client| {
         let model = model.clone();
@@ -118,9 +121,30 @@ async fn models() -> Result<()> {
     }
     Ok(())
 }
-async fn config_set_model(_id: &str) -> Result<()> {
-    Err(Error::Config("config set-model not implemented yet".into()))
+async fn config_set_model(id: &str) -> Result<()> {
+    let http = http_client()?;
+    let available =
+        copilot::call_authed(&http, |client| async move { client.list_chat_models().await })
+            .await?;
+    if !available.iter().any(|m| m.id == id) {
+        let ids: Vec<String> = available.into_iter().map(|m| m.id).collect();
+        return Err(Error::Config(format!(
+            "model `{id}` not available — try one of: {}",
+            ids.join(", ")
+        )));
+    }
+    let mut cfg = config::Config::load()?;
+    cfg.default_model = Some(id.to_string());
+    cfg.save()?;
+    println!("Default model set to {id}.");
+    Ok(())
 }
+
 async fn config_get_model() -> Result<()> {
-    Err(Error::Config("config get-model not implemented yet".into()))
+    let cfg = config::Config::load()?;
+    match cfg.default_model.as_deref() {
+        Some(m) => println!("{m}"),
+        None => println!("(none — defaulting to {})", commit_msg::FALLBACK_MODEL),
+    }
+    Ok(())
 }
