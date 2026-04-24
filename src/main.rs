@@ -3,6 +3,7 @@ mod cli;
 mod config;
 mod copilot;
 mod error;
+mod git;
 
 use clap::Parser;
 use cli::{AuthAction, Cli, Command, ConfigAction};
@@ -37,8 +38,12 @@ async fn run(cli: Cli) -> Result<()> {
     }
 }
 
-async fn commit(_no_verify: bool) -> Result<()> {
-    Err(Error::Config("commit flow not implemented yet".into()))
+async fn commit(no_verify: bool) -> Result<()> {
+    // Phase 6 wires diff → dummy draft → editor commit end to end. Phase 7
+    // replaces the draft with Copilot-generated text.
+    let _diff = git::diff::staged_diff()?;
+    let draft = "chore: WIP (replace me)\n\n# git-ca phase 6 placeholder draft — edit and save to commit.\n";
+    git::commit::commit_with_editor(draft, no_verify)
 }
 fn http_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
