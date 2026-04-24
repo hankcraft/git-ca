@@ -1,6 +1,6 @@
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, USER_AGENT};
 
-use crate::error::{Error, Result};
+use crate::error::Error;
 
 pub const API_BASE: &str = "https://api.githubcopilot.com";
 
