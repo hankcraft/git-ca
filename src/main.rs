@@ -39,14 +39,41 @@ async fn run(cli: Cli) -> Result<()> {
 async fn commit(_no_verify: bool) -> Result<()> {
     Err(Error::Config("commit flow not implemented yet".into()))
 }
+fn http_client() -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .user_agent(concat!("git-ca/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(Into::into)
+}
+
 async fn auth_login() -> Result<()> {
-    Err(Error::Config("auth login not implemented yet".into()))
+    use auth::device_flow::{self, GITHUB_BASE, VSCODE_COPILOT_CLIENT_ID};
+
+    let http = http_client()?;
+    let token = device_flow::run(&http, GITHUB_BASE, VSCODE_COPILOT_CLIENT_ID).await?;
+
+    let mut file = auth::AuthFile::load()?;
+    file.github_token = Some(token);
+    // Invalidate any cached Copilot token from a prior session.
+    file.copilot = None;
+    file.save()?;
+    println!("Logged in. GitHub token stored.");
+    Ok(())
 }
+
 async fn auth_logout() -> Result<()> {
-    Err(Error::Config("auth logout not implemented yet".into()))
+    auth::AuthFile::clear()?;
+    println!("Tokens cleared.");
+    Ok(())
 }
+
 async fn auth_status() -> Result<()> {
-    Err(Error::Config("auth status not implemented yet".into()))
+    let file = auth::AuthFile::load()?;
+    match file.github_token.as_deref() {
+        Some(_) => println!("GitHub: logged in"),
+        None => println!("GitHub: not logged in (run `git ca auth login`)"),
+    }
+    Ok(())
 }
 async fn models() -> Result<()> {
     Err(Error::Config("models listing not implemented yet".into()))
