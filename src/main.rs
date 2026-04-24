@@ -1,6 +1,7 @@
 mod auth;
 mod cli;
 mod config;
+mod copilot;
 mod error;
 
 use clap::Parser;
@@ -91,7 +92,19 @@ async fn auth_status() -> Result<()> {
     Ok(())
 }
 async fn models() -> Result<()> {
-    Err(Error::Config("models listing not implemented yet".into()))
+    let http = http_client()?;
+    let list = copilot::call_authed(&http, |client| async move { client.list_chat_models().await })
+        .await?;
+    if list.is_empty() {
+        println!("(no chat models available on this account)");
+        return Ok(());
+    }
+    for m in list {
+        let name = m.name.as_deref().unwrap_or("");
+        let vendor = m.vendor.as_deref().unwrap_or("");
+        println!("{:<30}  {:<14}  {}", m.id, vendor, name);
+    }
+    Ok(())
 }
 async fn config_set_model(_id: &str) -> Result<()> {
     Err(Error::Config("config set-model not implemented yet".into()))
