@@ -1,4 +1,6 @@
+mod auth;
 mod cli;
+mod config;
 mod error;
 
 use clap::Parser;
