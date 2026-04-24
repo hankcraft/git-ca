@@ -1,5 +1,6 @@
 mod auth;
 mod cli;
+mod commit_msg;
 mod config;
 mod copilot;
 mod error;
@@ -39,11 +40,17 @@ async fn run(cli: Cli) -> Result<()> {
 }
 
 async fn commit(no_verify: bool) -> Result<()> {
-    // Phase 6 wires diff → dummy draft → editor commit end to end. Phase 7
-    // replaces the draft with Copilot-generated text.
-    let _diff = git::diff::staged_diff()?;
-    let draft = "chore: WIP (replace me)\n\n# git-ca phase 6 placeholder draft — edit and save to commit.\n";
-    git::commit::commit_with_editor(draft, no_verify)
+    let diff = git::diff::staged_diff()?;
+    let http = http_client()?;
+    let model = commit_msg::FALLBACK_MODEL.to_string();
+    eprintln!("git-ca: drafting message with {model}…");
+    let draft = copilot::call_authed(&http, |client| {
+        let model = model.clone();
+        let diff = diff.clone();
+        async move { commit_msg::generate(&client, &model, &diff).await }
+    })
+    .await?;
+    git::commit::commit_with_editor(&draft, no_verify)
 }
 fn http_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
