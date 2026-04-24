@@ -73,6 +73,21 @@ async fn auth_status() -> Result<()> {
         Some(_) => println!("GitHub: logged in"),
         None => println!("GitHub: not logged in (run `git ca auth login`)"),
     }
+    match file.copilot.as_ref() {
+        Some(c) => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let remaining = c.expires_at - now;
+            if remaining > 0 {
+                println!("Copilot token: valid for {remaining}s");
+            } else {
+                println!("Copilot token: expired (will refresh on next use)");
+            }
+        }
+        None => println!("Copilot token: none cached (will fetch on next use)"),
+    }
     Ok(())
 }
 async fn models() -> Result<()> {
