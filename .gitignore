@@ -1,0 +1,7 @@
+/target
+Cargo.lock.bak
+
+# Claude Code / workspace artifacts
+/.agents/
+/.claude/
+/skills-lock.json
