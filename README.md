@@ -8,6 +8,7 @@ Prerequisites:
 
 - Rust toolchain with Cargo
 - Git
+- Lefthook for Git hooks
 - A GitHub account with Copilot access
 
 Install from this checkout:
@@ -113,6 +114,12 @@ Runtime flow for `git ca`:
 7. Run `git commit -e -F .git/COMMIT_EDITMSG`, optionally with `--no-verify`.
 
 ## Development Flow
+
+Enable the project Git hooks once per checkout:
+
+```sh
+lefthook install
+```
 
 Run the standard checks before committing:
 
