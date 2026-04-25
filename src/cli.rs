@@ -35,7 +35,10 @@ pub enum Command {
 pub enum AuthAction {
     /// Log in via GitHub device flow.
     Login,
-    /// Forget stored tokens.
+    /// Forget locally stored tokens.
+    ///
+    /// This only deletes the on-disk credentials. To revoke the GitHub OAuth
+    /// grant server-side, visit https://github.com/settings/applications.
     Logout,
     /// Show auth state and Copilot token TTL.
     Status,

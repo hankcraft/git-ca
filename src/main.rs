@@ -56,8 +56,15 @@ async fn commit(model_override: Option<String>, no_verify: bool) -> Result<()> {
     git::commit::commit_with_editor(&draft, no_verify)
 }
 fn http_client() -> Result<reqwest::Client> {
+    use std::time::Duration;
+    // Without a request timeout, a hung GitHub or Copilot endpoint hangs the
+    // CLI indefinitely — the retry layer can only kick in on errors. 120s
+    // covers slow chat completions on long diffs; 10s connect catches DNS
+    // and TCP-level stalls fast.
     reqwest::Client::builder()
         .user_agent(concat!("git-ca/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(120))
         .build()
         .map_err(Into::into)
 }
