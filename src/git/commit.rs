@@ -27,10 +27,7 @@ pub fn commit_with_editor(draft: &str, no_verify: bool) -> Result<()> {
     }
     let status = cmd.status()?;
     if !status.success() {
-        return Err(Error::Git(
-            "commit".into(),
-            status.code().unwrap_or(1),
-        ));
+        return Err(Error::Git("commit".into(), status.code().unwrap_or(1)));
     }
     Ok(())
 }

@@ -22,8 +22,8 @@ where
     let client = Client::new(http.clone(), &token);
     match retry_transient(|| op(client.clone())).await {
         Err(Error::CopilotAuth) => {
-            let token = copilot_token::refresh(http, copilot_token::GITHUB_API_BASE, &mut file)
-                .await?;
+            let token =
+                copilot_token::refresh(http, copilot_token::GITHUB_API_BASE, &mut file).await?;
             let client = Client::new(http.clone(), &token);
             retry_transient(|| op(client.clone())).await
         }
@@ -76,7 +76,10 @@ mod tests {
             let c = c.clone();
             async move {
                 c.fetch_add(1, Ordering::SeqCst);
-                Err(Error::CopilotServer { status: 503, body: "oops".into() })
+                Err(Error::CopilotServer {
+                    status: 503,
+                    body: "oops".into(),
+                })
             }
         })
         .await;
@@ -110,7 +113,10 @@ mod tests {
             async move {
                 let n = c.fetch_add(1, Ordering::SeqCst);
                 if n == 0 {
-                    Err(Error::CopilotServer { status: 500, body: "x".into() })
+                    Err(Error::CopilotServer {
+                        status: 500,
+                        body: "x".into(),
+                    })
                 } else {
                     Ok("ok")
                 }

@@ -28,12 +28,7 @@ struct ModelsResp {
 impl Client {
     pub async fn list_models(&self) -> Result<Vec<Model>> {
         let url = format!("{}/models", self.base_url());
-        let resp = self
-            .http()
-            .get(url)
-            .headers(self.headers())
-            .send()
-            .await?;
+        let resp = self.http().get(url).headers(self.headers()).send().await?;
         if !resp.status().is_success() {
             return Err(map_error(resp).await);
         }

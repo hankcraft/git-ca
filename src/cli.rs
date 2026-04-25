@@ -1,7 +1,12 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "git-ca", version, about = "Draft git commit messages with GitHub Copilot", disable_help_subcommand = true)]
+#[command(
+    name = "git-ca",
+    version,
+    about = "Draft git commit messages with GitHub Copilot",
+    disable_help_subcommand = true
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,

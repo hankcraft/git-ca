@@ -78,7 +78,9 @@ mod tests {
     fn round_trip_config() {
         let path = tmp_file("config.json");
         let _ = std::fs::remove_file(&path);
-        let cfg = Config { default_model: Some("gpt-4o".into()) };
+        let cfg = Config {
+            default_model: Some("gpt-4o".into()),
+        };
         write_json_0600(&path, &cfg).unwrap();
 
         let loaded: Config = read_json_or_default(&path).unwrap();

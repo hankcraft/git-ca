@@ -29,10 +29,7 @@ Rules:
 pub fn build(diff: &str) -> Vec<ChatMessage> {
     vec![
         ChatMessage::system(SYSTEM_PROMPT),
-        ChatMessage::user(format!(
-            "Staged diff:\n\n```diff\n{}\n```",
-            truncate(diff)
-        )),
+        ChatMessage::user(format!("Staged diff:\n\n```diff\n{}\n```", truncate(diff))),
     ]
 }
 

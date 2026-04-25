@@ -115,8 +115,11 @@ async fn auth_status() -> Result<()> {
 }
 async fn models() -> Result<()> {
     let http = http_client()?;
-    let list = copilot::call_authed(&http, |client| async move { client.list_chat_models().await })
-        .await?;
+    let list = copilot::call_authed(
+        &http,
+        |client| async move { client.list_chat_models().await },
+    )
+    .await?;
     if list.is_empty() {
         println!("(no chat models available on this account)");
         return Ok(());
@@ -130,9 +133,11 @@ async fn models() -> Result<()> {
 }
 async fn config_set_model(id: &str) -> Result<()> {
     let http = http_client()?;
-    let available =
-        copilot::call_authed(&http, |client| async move { client.list_chat_models().await })
-            .await?;
+    let available = copilot::call_authed(
+        &http,
+        |client| async move { client.list_chat_models().await },
+    )
+    .await?;
     if !available.iter().any(|m| m.id == id) {
         let ids: Vec<String> = available.into_iter().map(|m| m.id).collect();
         return Err(Error::Config(format!(
