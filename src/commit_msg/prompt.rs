@@ -40,11 +40,18 @@ fn truncate(diff: &str) -> String {
     if diff.len() <= DIFF_CHAR_LIMIT {
         return diff.to_string();
     }
-    let mut out = String::with_capacity(DIFF_CHAR_LIMIT + 64);
-    out.push_str(&diff[..DIFF_CHAR_LIMIT]);
+    // Walk back to the nearest UTF-8 char boundary so a multi-byte char
+    // straddling DIFF_CHAR_LIMIT (e.g. CJK source, emoji in a comment) does
+    // not panic the slice.
+    let mut end = DIFF_CHAR_LIMIT;
+    while !diff.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut out = String::with_capacity(end + 64);
+    out.push_str(&diff[..end]);
     out.push_str("\n\n# ... diff truncated to ");
-    out.push_str(&DIFF_CHAR_LIMIT.to_string());
-    out.push_str(" chars ...\n");
+    out.push_str(&end.to_string());
+    out.push_str(" bytes ...\n");
     out
 }
 
@@ -68,5 +75,17 @@ mod tests {
         assert!(msgs[1].content.contains("diff truncated"));
         // content length <= limit + marker slack
         assert!(msgs[1].content.len() < DIFF_CHAR_LIMIT + 500);
+    }
+
+    #[test]
+    fn truncate_at_multibyte_char_boundary_does_not_panic() {
+        // Place 'é' (2 bytes 0xC3 0xA9) so its first byte lands at
+        // DIFF_CHAR_LIMIT - 1, guaranteeing a non-boundary cut at the limit.
+        let mut s = "a".repeat(DIFF_CHAR_LIMIT - 1);
+        s.push('é');
+        s.push_str(&"x".repeat(100));
+        assert!(s.len() > DIFF_CHAR_LIMIT);
+        let msgs = build(&s);
+        assert!(msgs[1].content.contains("diff truncated"));
     }
 }

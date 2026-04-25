@@ -35,14 +35,27 @@ pub async fn refresh(
         .github_token
         .as_deref()
         .ok_or(Error::NotAuthenticated)?;
+    let cache = exchange_token(http, api_base, gh_token).await?;
+    let token = cache.token.clone();
+    file.copilot = Some(cache);
+    file.save()?;
+    Ok(token)
+}
 
+/// Pure HTTP exchange: GitHub token in, fresh `CopilotCache` out. Split out so
+/// tests can drive it against a mock server without writing to the user's
+/// real config directory via `AuthFile::save`.
+async fn exchange_token(
+    http: &reqwest::Client,
+    api_base: &str,
+    gh_token: &str,
+) -> Result<CopilotCache> {
     let resp = http
         .get(format!("{api_base}/copilot_internal/v2/token"))
         .header("Authorization", format!("token {gh_token}"))
         .header("Accept", "application/json")
         .send()
         .await?;
-
     let status = resp.status();
     if status == reqwest::StatusCode::UNAUTHORIZED {
         return Err(Error::CopilotAuth);
@@ -55,12 +68,10 @@ pub async fn refresh(
         });
     }
     let exchange: ExchangeResp = resp.json().await?;
-    file.copilot = Some(CopilotCache {
-        token: exchange.token.clone(),
+    Ok(CopilotCache {
+        token: exchange.token,
         expires_at: exchange.expires_at,
-    });
-    file.save()?;
-    Ok(exchange.token)
+    })
 }
 
 fn now_unix() -> i64 {
@@ -76,13 +87,6 @@ mod tests {
     use super::*;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    fn auth_with_gh(token: &str) -> AuthFile {
-        AuthFile {
-            github_token: Some(token.into()),
-            copilot: None,
-        }
-    }
 
     #[tokio::test]
     async fn ensure_uses_cache_when_valid() {
@@ -102,77 +106,60 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refresh_stores_new_token() {
+    async fn exchange_token_returns_cache_on_success() {
         let server = MockServer::start().await;
+        let expires = now_unix() + 1800;
         Mock::given(method("GET"))
             .and(path("/copilot_internal/v2/token"))
             .and(header("Authorization", "token gho_x"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "token": "cop_new",
-                "expires_at": now_unix() + 1800,
+                "expires_at": expires,
             })))
             .mount(&server)
             .await;
-        let mut file = auth_with_gh("gho_x");
+
         let http = reqwest::Client::new();
-        // Persist to tmp — AuthFile::save hits the real config dir, which is
-        // fine for the test host but we restore after.
-        let token = refresh_in_memory(&http, &server.uri(), &mut file)
-            .await
-            .unwrap();
-        assert_eq!(token, "cop_new");
-        assert_eq!(file.copilot.as_ref().unwrap().token, "cop_new");
+        let cache = exchange_token(&http, &server.uri(), "gho_x").await.unwrap();
+        assert_eq!(cache.token, "cop_new");
+        assert_eq!(cache.expires_at, expires);
     }
 
     #[tokio::test]
-    async fn unauthorized_maps_to_copilot_auth_error() {
+    async fn exchange_token_unauthorized_maps_to_copilot_auth() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/copilot_internal/v2/token"))
             .respond_with(ResponseTemplate::new(401))
             .mount(&server)
             .await;
-        let mut file = auth_with_gh("gho_x");
+
         let http = reqwest::Client::new();
-        let err = refresh_in_memory(&http, &server.uri(), &mut file)
+        let err = exchange_token(&http, &server.uri(), "gho_x")
             .await
             .unwrap_err();
         assert!(matches!(err, Error::CopilotAuth), "got {err:?}");
     }
 
-    /// Test helper: perform the same request as `refresh` but skip the
-    /// `file.save()` step so tests don't touch the user's config dir.
-    async fn refresh_in_memory(
-        http: &reqwest::Client,
-        api_base: &str,
-        file: &mut AuthFile,
-    ) -> Result<String> {
-        let gh_token = file
-            .github_token
-            .as_deref()
-            .ok_or(Error::NotAuthenticated)?;
-        let resp = http
-            .get(format!("{api_base}/copilot_internal/v2/token"))
-            .header("Authorization", format!("token {gh_token}"))
-            .header("Accept", "application/json")
-            .send()
-            .await?;
-        let status = resp.status();
-        if status == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(Error::CopilotAuth);
+    #[tokio::test]
+    async fn exchange_token_5xx_maps_to_copilot_server() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/copilot_internal/v2/token"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("upstream down"))
+            .mount(&server)
+            .await;
+
+        let http = reqwest::Client::new();
+        let err = exchange_token(&http, &server.uri(), "gho_x")
+            .await
+            .unwrap_err();
+        match err {
+            Error::CopilotServer { status, body } => {
+                assert_eq!(status, 503);
+                assert!(body.contains("upstream down"));
+            }
+            other => panic!("expected CopilotServer, got {other:?}"),
         }
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(Error::CopilotServer {
-                status: status.as_u16(),
-                body,
-            });
-        }
-        let exchange: ExchangeResp = resp.json().await?;
-        file.copilot = Some(CopilotCache {
-            token: exchange.token.clone(),
-            expires_at: exchange.expires_at,
-        });
-        Ok(exchange.token)
     }
 }
