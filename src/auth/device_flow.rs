@@ -35,7 +35,9 @@ pub async fn run(http: &reqwest::Client, base_url: &str, client_id: &str) -> Res
         url = code.verification_uri,
         user_code = code.user_code,
     );
-    open_url_best_effort(&code.verification_uri);
+    if should_open_url() {
+        open_url_best_effort(&code.verification_uri);
+    }
     poll_token(http, base_url, client_id, &code.device_code, code.interval).await
 }
 
@@ -127,6 +129,10 @@ fn open_url_best_effort(url: &str) {
     }
 }
 
+fn should_open_url() -> bool {
+    !cfg!(test)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,5 +201,10 @@ mod tests {
         let err = run(&http, &server.uri(), "test-client").await.unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("denied"), "got {msg}");
+    }
+
+    #[test]
+    fn browser_auto_open_is_disabled_in_tests() {
+        assert!(!should_open_url());
     }
 }
