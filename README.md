@@ -40,6 +40,10 @@ git ca models
 git ca config set-model <model-id>
 git ca config get-model
 git ca --model <model-id>
+git ca -m <model-id>
+git ca --yes
+git ca -y
+git ca --auto-accept
 git ca --no-verify
 ```
 
@@ -48,8 +52,10 @@ git ca --no-verify
 - Drafts commit messages from the staged diff only.
 - Prompts Copilot to produce Conventional Commits output.
 - Opens the generated message in the normal Git commit editor before committing.
+- Can commit the generated message directly with `--yes` / `-y` / `--auto-accept` or persisted config.
 - Supports per-command model override with `--model`.
 - Supports a persisted default model via `git ca config set-model`.
+- Supports persisted auto-accept via `git ca config set-auto-accept`.
 - Lists chat models available to the authenticated Copilot account.
 - Uses GitHub device flow for login.
 - Stores local auth/config files under the platform config directory with restrictive Unix permissions.
@@ -62,7 +68,8 @@ git ca --no-verify
 | Command | Description |
 | --- | --- |
 | `git ca` | Draft a message for staged changes and run `git commit -e -F <message>` |
-| `git ca --model <id>` | Use a specific Copilot model for this commit |
+| `git ca --model <id>`, `git ca -m <id>` | Use a specific Copilot model for this commit |
+| `git ca --yes`, `git ca -y`, `git ca --auto-accept` | Commit the generated message without opening the editor |
 | `git ca --no-verify` | Pass `--no-verify` through to `git commit` |
 | `git ca auth login` | Log in with GitHub device flow |
 | `git ca auth logout` | Delete locally stored tokens |
@@ -70,6 +77,8 @@ git ca --no-verify
 | `git ca models` | List available Copilot chat models |
 | `git ca config set-model <id>` | Persist the default model |
 | `git ca config get-model` | Print the persisted default model |
+| `git ca config set-auto-accept <true|false>` | Persist whether generated messages commit without opening the editor |
+| `git ca config get-auto-accept` | Print the persisted auto-accept setting |
 
 `auth logout` only removes local credentials. Revoke the OAuth grant separately from GitHub account settings if the server-side grant should be invalidated.
 
@@ -112,6 +121,21 @@ Runtime flow for `git ca`:
 5. Strip an accidental outer code fence from the model response.
 6. Write `.git/COMMIT_EDITMSG`.
 7. Run `git commit -e -F .git/COMMIT_EDITMSG`, optionally with `--no-verify`.
+8. If `--yes` / `-y` / `--auto-accept` or `config.auto_accept` is enabled, run `git commit -F .git/COMMIT_EDITMSG` instead so Git commits the generated message directly.
+
+## Copilot Free and Model Multipliers
+
+GitHub Copilot request accounting depends on both plan and model. GitHub's
+documentation is the source of truth because included models and multipliers can
+change: <https://docs.github.com/en/copilot/concepts/billing/copilot-requests#model-multipliers>
+
+As of the referenced GitHub documentation:
+
+- Copilot Free includes up to 2,000 inline suggestion requests and up to 50 premium requests per month.
+- All chat interactions count as premium requests on Copilot Free.
+- On paid Copilot plans, GPT-5 mini, GPT-4.1, and GPT-4o are included models and have a 0 premium-request multiplier.
+- On Copilot Free, GPT-5 mini, GPT-4.1, and GPT-4o each consume 1 premium request.
+- Other premium model multipliers vary by model and may be unavailable on Copilot Free.
 
 ## Development Flow
 
