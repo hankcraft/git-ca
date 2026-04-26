@@ -16,8 +16,17 @@ pub struct Cli {
     pub no_verify: bool,
 
     /// Copilot model id to use for drafting (overrides the persisted default).
-    #[arg(long = "model")]
+    #[arg(short = 'm', long = "model")]
     pub model: Option<String>,
+
+    /// Commit the generated message without opening the editor.
+    #[arg(
+        short = 'y',
+        long = "yes",
+        visible_alias = "auto-accept",
+        global = true
+    )]
+    pub yes: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -55,4 +64,57 @@ pub enum ConfigAction {
     SetModel { id: String },
     /// Print the default model (if any).
     GetModel,
+    /// Set whether generated messages are committed without opening the editor.
+    SetAutoAccept {
+        #[arg(action = clap::ArgAction::Set)]
+        value: bool,
+    },
+    /// Print whether generated messages are committed without opening the editor.
+    GetAutoAccept,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn parses_yes_long_flag() {
+        let cli = Cli::try_parse_from(["git-ca", "--yes"]).unwrap();
+
+        assert!(cli.yes);
+    }
+
+    #[test]
+    fn parses_model_short_flag() {
+        let cli = Cli::try_parse_from(["git-ca", "-m", "gpt-4o"]).unwrap();
+
+        assert_eq!(cli.model.as_deref(), Some("gpt-4o"));
+    }
+
+    #[test]
+    fn parses_yes_short_flag() {
+        let cli = Cli::try_parse_from(["git-ca", "-y"]).unwrap();
+
+        assert!(cli.yes);
+    }
+
+    #[test]
+    fn parses_auto_accept_alias() {
+        let cli = Cli::try_parse_from(["git-ca", "--auto-accept"]).unwrap();
+
+        assert!(cli.yes);
+    }
+
+    #[test]
+    fn parses_set_auto_accept_value() {
+        let cli = Cli::try_parse_from(["git-ca", "config", "set-auto-accept", "true"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Config {
+                action: ConfigAction::SetAutoAccept { value: true }
+            })
+        ));
+    }
 }

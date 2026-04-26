@@ -12,6 +12,9 @@ pub struct Config {
     /// Default model id used when `--model` is not passed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_model: Option<String>,
+    /// Commit generated messages without opening the editor.
+    #[serde(default)]
+    pub auto_accept: bool,
 }
 
 impl Config {
@@ -80,11 +83,13 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let cfg = Config {
             default_model: Some("gpt-4o".into()),
+            auto_accept: true,
         };
         write_json_0600(&path, &cfg).unwrap();
 
         let loaded: Config = read_json_or_default(&path).unwrap();
         assert_eq!(loaded.default_model.as_deref(), Some("gpt-4o"));
+        assert!(loaded.auto_accept);
 
         #[cfg(unix)]
         {
@@ -102,5 +107,6 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let cfg: Config = read_json_or_default(&path).unwrap();
         assert!(cfg.default_model.is_none());
+        assert!(!cfg.auto_accept);
     }
 }

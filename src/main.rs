@@ -25,7 +25,7 @@ async fn main() {
 
 async fn run(cli: Cli) -> Result<()> {
     match cli.command {
-        None => commit(cli.model, cli.no_verify).await,
+        None => commit(cli.model, cli.no_verify, cli.yes).await,
         Some(Command::Auth { action }) => match action {
             AuthAction::Login => auth_login().await,
             AuthAction::Logout => auth_logout().await,
@@ -35,16 +35,19 @@ async fn run(cli: Cli) -> Result<()> {
         Some(Command::Config { action }) => match action {
             ConfigAction::SetModel { id } => config_set_model(&id).await,
             ConfigAction::GetModel => config_get_model().await,
+            ConfigAction::SetAutoAccept { value } => config_set_auto_accept(value).await,
+            ConfigAction::GetAutoAccept => config_get_auto_accept().await,
         },
     }
 }
 
-async fn commit(model_override: Option<String>, no_verify: bool) -> Result<()> {
+async fn commit(model_override: Option<String>, no_verify: bool, yes: bool) -> Result<()> {
     let diff = git::diff::staged_diff()?;
     let http = http_client()?;
     let cfg = config::Config::load()?;
+    let auto_accept = yes || cfg.auto_accept;
     let model = model_override
-        .or(cfg.default_model)
+        .or_else(|| cfg.default_model.clone())
         .unwrap_or_else(|| commit_msg::FALLBACK_MODEL.to_string());
     eprintln!("git-ca: drafting message with {model}…");
     let draft = copilot::call_authed(&http, |client| {
@@ -53,7 +56,11 @@ async fn commit(model_override: Option<String>, no_verify: bool) -> Result<()> {
         async move { commit_msg::generate(&client, &model, &diff).await }
     })
     .await?;
-    git::commit::commit_with_editor(&draft, no_verify)
+    if auto_accept {
+        git::commit::commit_generated(&draft, no_verify)
+    } else {
+        git::commit::commit_with_editor(&draft, no_verify)
+    }
 }
 fn http_client() -> Result<reqwest::Client> {
     use std::time::Duration;
@@ -158,5 +165,19 @@ async fn config_get_model() -> Result<()> {
         Some(m) => println!("{m}"),
         None => println!("(none — defaulting to {})", commit_msg::FALLBACK_MODEL),
     }
+    Ok(())
+}
+
+async fn config_set_auto_accept(value: bool) -> Result<()> {
+    let mut cfg = config::Config::load()?;
+    cfg.auto_accept = value;
+    cfg.save()?;
+    println!("Auto accept set to {value}.");
+    Ok(())
+}
+
+async fn config_get_auto_accept() -> Result<()> {
+    let cfg = config::Config::load()?;
+    println!("{}", cfg.auto_accept);
     Ok(())
 }
