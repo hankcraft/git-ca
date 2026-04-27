@@ -60,6 +60,8 @@ pub enum AuthAction {
 
 #[derive(Debug, Subcommand)]
 pub enum ConfigAction {
+    /// Print all persisted config values.
+    List,
     /// Set the default model used when `--model` is not passed.
     SetModel { id: String },
     /// Print the default model (if any).
@@ -114,6 +116,18 @@ mod tests {
             cli.command,
             Some(Command::Config {
                 action: ConfigAction::SetAutoAccept { value: true }
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_config_list() {
+        let cli = Cli::try_parse_from(["git-ca", "config", "list"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Config {
+                action: ConfigAction::List
             })
         ));
     }

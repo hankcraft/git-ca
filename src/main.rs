@@ -33,6 +33,7 @@ async fn run(cli: Cli) -> Result<()> {
         },
         Some(Command::Models) => models().await,
         Some(Command::Config { action }) => match action {
+            ConfigAction::List => config_list().await,
             ConfigAction::SetModel { id } => config_set_model(&id).await,
             ConfigAction::GetModel => config_get_model().await,
             ConfigAction::SetAutoAccept { value } => config_set_auto_accept(value).await,
@@ -138,6 +139,28 @@ async fn models() -> Result<()> {
     }
     Ok(())
 }
+
+async fn config_list() -> Result<()> {
+    let cfg = config::Config::load()?;
+    for line in config_list_lines(&cfg) {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+fn config_list_lines(cfg: &config::Config) -> Vec<String> {
+    let mut lines = Vec::new();
+    match cfg.default_model.as_deref() {
+        Some(m) => lines.push(format!("default_model: {m}")),
+        None => lines.push(format!(
+            "default_model: {} (fallback)",
+            commit_msg::FALLBACK_MODEL
+        )),
+    }
+    lines.push(format!("auto_accept: {}", cfg.auto_accept));
+    lines
+}
+
 async fn config_set_model(id: &str) -> Result<()> {
     let http = http_client()?;
     let available = copilot::call_authed(
@@ -180,4 +203,25 @@ async fn config_get_auto_accept() -> Result<()> {
     let cfg = config::Config::load()?;
     println!("{}", cfg.auto_accept);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn formats_config_list_with_fallback_model() {
+        let cfg = config::Config {
+            default_model: None,
+            auto_accept: false,
+        };
+
+        assert_eq!(
+            config_list_lines(&cfg),
+            vec![
+                format!("default_model: {} (fallback)", commit_msg::FALLBACK_MODEL),
+                "auto_accept: false".to_string(),
+            ]
+        );
+    }
 }

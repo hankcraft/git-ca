@@ -85,6 +85,7 @@ git ca --no-verify
 | `git ca auth logout` | Delete locally stored tokens |
 | `git ca auth status` | Show local auth state and cached Copilot token TTL |
 | `git ca models` | List available Copilot chat models |
+| `git ca config list` | Print all persisted config values |
 | `git ca config set-model <id>` | Persist the default model |
 | `git ca config get-model` | Print the persisted default model |
 | `git ca config set-auto-accept <true|false>` | Persist whether generated messages commit without opening the editor |
