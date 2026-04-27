@@ -1,0 +1,90 @@
+.TH GIT-CA 1 "2026-04-27" "git-ca 0.1.0" "User Commands"
+.SH NAME
+git-ca \- draft git commit messages with GitHub Copilot
+.SH SYNOPSIS
+.B git ca
+.RI [ OPTIONS ]
+.RI [ COMMAND ]
+.br
+.B git-ca
+.RI [ OPTIONS ]
+.RI [ COMMAND ]
+.SH DESCRIPTION
+.B git-ca
+is a Git subcommand that drafts commit messages for staged changes using
+GitHub Copilot. It reads the staged diff, asks Copilot for a Conventional
+Commits message, writes the draft to Git's commit message file, and runs
+.BR git-commit (1).
+.PP
+Git handles
+.B git ca \--help
+by opening this manual page. For clap-generated command help, use
+.B git ca \-h
+or
+.BR "git-ca \--help" .
+.SH OPTIONS
+.TP
+.BR \-n , " \--no-verify"
+Skip pre-commit and commit-msg hooks.
+.TP
+.BI "\-m, \--model " MODEL
+Use a specific Copilot model for drafting. This overrides the persisted default
+model.
+.TP
+.BR \-y , " \--yes" , " \--auto-accept"
+Commit the generated message without opening the editor.
+.TP
+.BR \-h , " \--help"
+Print command help when the binary is invoked directly or through
+.BR "git ca \-h" .
+.TP
+.BR \-V , " \--version"
+Print version information.
+.SH COMMANDS
+.TP
+.B auth login
+Log in with GitHub device flow.
+.TP
+.B auth logout
+Delete locally stored tokens.
+.TP
+.B auth status
+Show local auth state and cached Copilot token TTL.
+.TP
+.B models
+List Copilot chat models available to the authenticated account.
+.TP
+.BI "config set-model " MODEL
+Persist the default Copilot model.
+.TP
+.B config get-model
+Print the persisted default model, if any.
+.TP
+.BI "config set-auto-accept " true|false
+Persist whether generated messages commit without opening the editor.
+.TP
+.B config get-auto-accept
+Print the persisted auto-accept setting.
+.SH EXAMPLES
+.TP
+Draft a commit message and open the editor:
+.B git ca
+.TP
+Draft with a specific model:
+.B git ca \-m gpt-4o
+.TP
+Commit the generated message directly:
+.B git ca \--yes
+.TP
+Show clap-generated help instead of this manual page:
+.B git ca \-h
+.SH FILES
+.TP
+.I ~/.config/git-ca/config.json
+User preferences, including default model and auto-accept behavior.
+.TP
+.I ~/.config/git-ca/auth.json
+Local GitHub and Copilot token cache.
+.SH SEE ALSO
+.BR git (1),
+.BR git-commit (1)

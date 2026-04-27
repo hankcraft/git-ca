@@ -15,7 +15,11 @@ Install from this checkout:
 
 ```sh
 cargo install --path .
+install -D -m 0644 docs/man/git-ca.1 ~/.local/share/man/man1/git-ca.1
 ```
+
+The man page install lets Git's own help path resolve `git ca --help`. For the
+clap-generated command help, `git ca -h` and `git-ca --help` work directly.
 
 Authenticate with GitHub Copilot:
 
