@@ -314,6 +314,8 @@ jobs:
             name=$(echo "$filename" | sed "s/\.rb$//")
             version=$(echo "$release" | jq .app_version --raw-output)
 
+            ruby -0pi -e 'sub(%Q{    install_binary_aliases!\n\n    # Homebrew}, %Q{    install_binary_aliases!\n    man1.install "git-ca.1" if File.exist?("git-ca.1")\n\n    # Homebrew}); sub(%Q{    leftover_contents = Dir["*"] - doc_files\n}, %Q{    leftover_contents = Dir["*"] - doc_files\n    leftover_contents -= ["git-ca.1"]\n})' "Formula/${filename}"
+
             export PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"
             brew update
             # We avoid reformatting user-provided data such as the app description and homepage.

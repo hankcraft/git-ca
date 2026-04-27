@@ -202,6 +202,8 @@ The release workflow uploads archives and checksums to GitHub Releases, then pub
 
 cargo-dist currently builds `git-ca` for `x86_64-apple-darwin`, `aarch64-apple-darwin`, and `x86_64-unknown-linux-gnu`, so the Homebrew formula supports macOS and Linuxbrew on x86_64 Linux.
 
+Production Homebrew releases install `docs/man/git-ca.1` automatically, so `git ca --help` can resolve Git's manual page after `brew install hankcraft/tap/git-ca`.
+
 ## Configuration Files
 
 `git-ca` uses the platform config directory reported by the `directories` crate. On Linux this is typically:

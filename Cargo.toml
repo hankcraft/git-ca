@@ -34,6 +34,7 @@ lto = "thin"
 cargo-dist-version = "0.31.0"
 ci = ["github"]
 installers = ["homebrew"]
+include = ["docs/man/git-ca.1"]
 targets = [
     "x86_64-apple-darwin",
     "aarch64-apple-darwin",
@@ -41,3 +42,4 @@ targets = [
 ]
 tap = "hankcraft/homebrew-tap"
 publish-jobs = ["homebrew"]
+allow-dirty = ["ci"]
