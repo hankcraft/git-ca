@@ -4,4 +4,6 @@ Cargo.lock.bak
 # Claude Code / workspace artifacts
 /.agents/
 /.claude/
+/.codex
+/docs/superpowers/
 /skills-lock.json

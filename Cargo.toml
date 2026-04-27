@@ -42,4 +42,3 @@ targets = [
 ]
 tap = "hankcraft/homebrew-tap"
 publish-jobs = ["homebrew"]
-allow-dirty = ["ci"]
