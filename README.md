@@ -24,6 +24,20 @@ Install from Homebrew after the first release is published:
 brew install hankcraft/tap/git-ca
 ```
 
+Install from npm or Bun after the first release is published:
+
+```sh
+npm install -g @hankcraft/git-ca
+bun install -g @hankcraft/git-ca
+```
+
+Run without a global install:
+
+```sh
+npx @hankcraft/git-ca --help
+bunx @hankcraft/git-ca --help
+```
+
 The man page install lets Git's own help path resolve `git ca --help`. For the
 clap-generated command help, `git ca -h` and `git-ca --help` work directly.
 
@@ -31,6 +45,8 @@ Authenticate with GitHub Copilot:
 
 ```sh
 git ca auth login
+git ca auth login work
+git ca auth use work
 ```
 
 Create a commit:
@@ -68,6 +84,7 @@ git ca --no-verify
 - Supports persisted auto-accept via `git ca config set-auto-accept`.
 - Lists chat models available to the authenticated Copilot account.
 - Uses GitHub device flow for login.
+- Supports multiple named GitHub accounts with an active-account selector.
 - Stores local auth/config files under the platform config directory with restrictive Unix permissions.
 - Caches Copilot API tokens and refreshes them when expired or rejected.
 - Retries transient Copilot/network failures with short backoff.
@@ -82,7 +99,10 @@ git ca --no-verify
 | `git ca --yes`, `git ca -y`, `git ca --auto-accept` | Commit the generated message without opening the editor |
 | `git ca --no-verify` | Pass `--no-verify` through to `git commit` |
 | `git ca auth login` | Log in with GitHub device flow |
+| `git ca auth login <account>` | Log in and store credentials for a named GitHub account |
+| `git ca auth use <account>` | Select the named account for Copilot-backed commands |
 | `git ca auth logout` | Delete locally stored tokens |
+| `git ca auth logout <account>` | Delete locally stored tokens for one named account |
 | `git ca auth status` | Show local auth state and cached Copilot token TTL |
 | `git ca models` | List available Copilot chat models |
 | `git ca config list` | Print all persisted config values |
@@ -199,7 +219,10 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release workflow uploads archives and checksums to GitHub Releases, then publishes the Homebrew formula to `hankcraft/homebrew-tap`. Configure a `HOMEBREW_TAP_TOKEN` GitHub secret in this repository with write access to that tap before pushing release tags.
+The release workflow uploads archives and checksums to GitHub Releases, publishes the Homebrew formula to `hankcraft/homebrew-tap`, and publishes the npm package to `@hankcraft/git-ca`. Configure these GitHub secrets before pushing release tags:
+
+- `HOMEBREW_TAP_TOKEN` with write access to `hankcraft/homebrew-tap`.
+- `NPM_TOKEN` with publish access to `@hankcraft/git-ca` on npmjs.com.
 
 cargo-dist currently builds `git-ca` for `x86_64-apple-darwin`, `aarch64-apple-darwin`, and `x86_64-unknown-linux-gnu`, so the Homebrew formula supports macOS and Linuxbrew on x86_64 Linux.
 

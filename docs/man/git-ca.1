@@ -42,14 +42,20 @@ Print command help when the binary is invoked directly or through
 Print version information.
 .SH COMMANDS
 .TP
-.B auth login
-Log in with GitHub device flow.
+.BI "auth login [" ACCOUNT "]"
+Log in with GitHub device flow. When ACCOUNT is provided, store credentials
+for that named account and make it active.
 .TP
-.B auth logout
-Delete locally stored tokens.
+.BI "auth use " ACCOUNT
+Select the named account for Copilot-backed commands.
+.TP
+.BI "auth logout [" ACCOUNT "]"
+Delete locally stored tokens. When ACCOUNT is provided, only that named account
+is removed.
 .TP
 .B auth status
-Show local auth state and cached Copilot token TTL.
+Show local auth state, active account, stored account names, and cached Copilot
+token TTL.
 .TP
 .B models
 List Copilot chat models available to the authenticated account.
