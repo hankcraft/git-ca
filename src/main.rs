@@ -27,8 +27,9 @@ async fn run(cli: Cli) -> Result<()> {
     match cli.command {
         None => commit(cli.model, cli.no_verify, cli.yes).await,
         Some(Command::Auth { action }) => match action {
-            AuthAction::Login => auth_login().await,
-            AuthAction::Logout => auth_logout().await,
+            AuthAction::Login { account } => auth_login(account).await,
+            AuthAction::Logout { account } => auth_logout(account).await,
+            AuthAction::Use { account } => auth_use(&account).await,
             AuthAction::Status => auth_status().await,
         },
         Some(Command::Models) => models().await,
@@ -77,34 +78,59 @@ fn http_client() -> Result<reqwest::Client> {
         .map_err(Into::into)
 }
 
-async fn auth_login() -> Result<()> {
+async fn auth_login(account: Option<String>) -> Result<()> {
     use auth::device_flow::{self, GITHUB_BASE, VSCODE_COPILOT_CLIENT_ID};
 
+    let account = account.unwrap_or_else(|| "default".to_string());
     let http = http_client()?;
     let token = device_flow::run(&http, GITHUB_BASE, VSCODE_COPILOT_CLIENT_ID).await?;
 
     let mut file = auth::AuthFile::load()?;
-    file.github_token = Some(token);
-    // Invalidate any cached Copilot token from a prior session.
-    file.copilot = None;
+    file.set_github_token(&account, token);
     file.save()?;
-    println!("Logged in. GitHub token stored.");
+    println!("Logged in as {account}. GitHub token stored.");
     Ok(())
 }
 
-async fn auth_logout() -> Result<()> {
-    auth::AuthFile::clear()?;
-    println!("Tokens cleared.");
+async fn auth_logout(account: Option<String>) -> Result<()> {
+    match account {
+        Some(account) => {
+            let mut file = auth::AuthFile::load()?;
+            file.remove_account(&account);
+            file.save()?;
+            println!("Account {account} cleared.");
+        }
+        None => {
+            auth::AuthFile::clear()?;
+            println!("Tokens cleared.");
+        }
+    }
+    Ok(())
+}
+
+async fn auth_use(account: &str) -> Result<()> {
+    let mut file = auth::AuthFile::load()?;
+    file.set_active_account(account.to_string())?;
+    file.save()?;
+    println!("Active account set to {account}.");
     Ok(())
 }
 
 async fn auth_status() -> Result<()> {
     let file = auth::AuthFile::load()?;
-    match file.github_token.as_deref() {
+    let active = file.active_account();
+    match active.and_then(|account| account.github_token.as_deref()) {
         Some(_) => println!("GitHub: logged in"),
         None => println!("GitHub: not logged in (run `git ca auth login`)"),
     }
-    match file.copilot.as_ref() {
+    if let Some(account) = active {
+        println!("Active account: {}", account.name);
+    }
+    let accounts: Vec<&str> = file.account_names().collect();
+    if !accounts.is_empty() {
+        println!("Accounts: {}", accounts.join(", "));
+    }
+    match active.and_then(|account| account.copilot.as_ref()) {
         Some(c) => {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

@@ -15,7 +15,10 @@ struct ExchangeResp {
 /// Return a valid Copilot API token, exchanging from the stored GitHub token
 /// when the cache is missing or within `REFRESH_SKEW_SECS` of expiry.
 pub async fn ensure(http: &reqwest::Client, api_base: &str, file: &mut AuthFile) -> Result<String> {
-    if let Some(cache) = &file.copilot {
+    if let Some(cache) = file
+        .active_account()
+        .and_then(|account| account.copilot.as_ref())
+    {
         if cache.expires_at - now_unix() > REFRESH_SKEW_SECS {
             return Ok(cache.token.clone());
         }
@@ -32,12 +35,14 @@ pub async fn refresh(
     file: &mut AuthFile,
 ) -> Result<String> {
     let gh_token = file
-        .github_token
-        .as_deref()
-        .ok_or(Error::NotAuthenticated)?;
-    let cache = exchange_token(http, api_base, gh_token).await?;
+        .active_account()
+        .and_then(|account| account.github_token.as_deref())
+        .ok_or(Error::NotAuthenticated)?
+        .to_string();
+    let cache = exchange_token(http, api_base, &gh_token).await?;
     let token = cache.token.clone();
-    file.copilot = Some(cache);
+    let account = file.active_account_mut().ok_or(Error::NotAuthenticated)?;
+    account.copilot = Some(cache);
     file.save()?;
     Ok(token)
 }
@@ -92,11 +97,18 @@ mod tests {
     async fn ensure_uses_cache_when_valid() {
         let server = MockServer::start().await;
         let mut file = AuthFile {
-            github_token: Some("gho_x".into()),
-            copilot: Some(CopilotCache {
-                token: "cached".into(),
-                expires_at: now_unix() + 3600,
-            }),
+            active_account: Some("default".into()),
+            accounts: std::collections::BTreeMap::from([(
+                "default".into(),
+                crate::auth::store::AccountAuth {
+                    name: "default".into(),
+                    github_token: Some("gho_x".into()),
+                    copilot: Some(CopilotCache {
+                        token: "cached".into(),
+                        expires_at: now_unix() + 3600,
+                    }),
+                },
+            )]),
         };
         let http = reqwest::Client::new();
         let token = ensure(&http, &server.uri(), &mut file).await.unwrap();

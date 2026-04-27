@@ -48,12 +48,14 @@ pub enum Command {
 #[derive(Debug, Subcommand)]
 pub enum AuthAction {
     /// Log in via GitHub device flow.
-    Login,
+    Login { account: Option<String> },
     /// Forget locally stored tokens.
     ///
     /// This only deletes the on-disk credentials. To revoke the GitHub OAuth
     /// grant server-side, visit https://github.com/settings/applications.
-    Logout,
+    Logout { account: Option<String> },
+    /// Switch the account used by commands that call Copilot.
+    Use { account: String },
     /// Show auth state and Copilot token TTL.
     Status,
 }
@@ -129,6 +131,30 @@ mod tests {
             Some(Command::Config {
                 action: ConfigAction::List
             })
+        ));
+    }
+
+    #[test]
+    fn parses_auth_login_account_name() {
+        let cli = Cli::try_parse_from(["git-ca", "auth", "login", "work"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Auth {
+                action: AuthAction::Login { account }
+            }) if account.as_deref() == Some("work")
+        ));
+    }
+
+    #[test]
+    fn parses_auth_use_account_name() {
+        let cli = Cli::try_parse_from(["git-ca", "auth", "use", "personal"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Auth {
+                action: AuthAction::Use { account }
+            }) if account == "personal"
         ));
     }
 
