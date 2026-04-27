@@ -33,12 +33,13 @@ lto = "thin"
 [workspace.metadata.dist]
 cargo-dist-version = "0.31.0"
 ci = ["github"]
-installers = ["homebrew"]
+installers = ["homebrew", "npm"]
 include = ["docs/man/git-ca.1"]
+npm-scope = "@hankcraft"
 targets = [
     "x86_64-apple-darwin",
     "aarch64-apple-darwin",
     "x86_64-unknown-linux-gnu",
 ]
 tap = "hankcraft/homebrew-tap"
-publish-jobs = ["homebrew"]
+publish-jobs = ["homebrew", "npm"]
