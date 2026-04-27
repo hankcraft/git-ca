@@ -18,6 +18,12 @@ cargo install --path .
 install -D -m 0644 docs/man/git-ca.1 ~/.local/share/man/man1/git-ca.1
 ```
 
+Install from Homebrew after the first release is published:
+
+```sh
+brew install hankcraft/tap/git-ca
+```
+
 The man page install lets Git's own help path resolve `git ca --help`. For the
 clap-generated command help, `git ca -h` and `git-ca --help` work directly.
 
@@ -169,22 +175,32 @@ Recommended change flow:
 
 ## Release Flow
 
-There is no release automation in this repository yet. A manual release should use this checklist:
+Releases are built by cargo-dist and published from GitHub Actions when a version tag is pushed.
 
 1. Update `version` in `Cargo.toml`.
 2. Run `cargo fmt --check`.
 3. Run `cargo clippy --all-targets --all-features -- -D warnings`.
 4. Run `cargo test`.
-5. Build the release binary with `cargo build --release`.
-6. Smoke test the binary:
+5. Run `dist plan`.
+6. Build the release binary locally if you want an extra smoke test:
 
-   ```sh
-   target/release/git-ca --help
-   target/release/git-ca auth --help
-   target/release/git-ca config --help
-   ```
+```sh
+cargo build --release
+target/release/git-ca --help
+target/release/git-ca auth --help
+target/release/git-ca config --help
+```
 
-7. Commit the version change and tag the release.
+7. Commit the version change and create a version tag:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow uploads archives and checksums to GitHub Releases, then publishes the Homebrew formula to `hankcraft/homebrew-tap`. Configure a `HOMEBREW_TAP_TOKEN` GitHub secret in this repository with write access to that tap before pushing release tags.
+
+cargo-dist currently builds `git-ca` for `x86_64-apple-darwin`, `aarch64-apple-darwin`, and `x86_64-unknown-linux-gnu`, so the Homebrew formula supports macOS and Linuxbrew on x86_64 Linux.
 
 ## Configuration Files
 
