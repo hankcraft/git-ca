@@ -206,14 +206,19 @@ Recommended change flow:
 
 ## Release Flow
 
-Releases are built by cargo-dist and published from GitHub Actions when a version tag is pushed.
+Releases are built by cargo-dist and can be published either from GitHub Actions or from a local maintainer machine.
+
+### GitHub Actions release
+
+Push a version tag to publish GitHub Release artifacts, crates.io, Homebrew, and npm from CI.
 
 1. Update `version` in `Cargo.toml`.
 2. Run `cargo fmt --check`.
 3. Run `cargo clippy --all-targets --all-features -- -D warnings`.
 4. Run `cargo test`.
-5. Run `dist plan`.
-6. Build the release binary locally if you want an extra smoke test:
+5. Run `cargo publish --dry-run --locked`.
+6. Run `dist plan --allow-dirty`.
+7. Build the release binary locally if you want an extra smoke test:
 
 ```sh
 cargo build --release
@@ -222,18 +227,52 @@ target/release/git-ca auth --help
 target/release/git-ca config --help
 ```
 
-7. Commit the version change and create a version tag:
+8. Commit the version change and create a version tag:
 
 ```sh
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release workflow uploads archives and checksums to GitHub Releases, publishes the Homebrew formula to `hankcraft/homebrew-tap`, and publishes the npm package to `@hankcraft/git-ca`. Configure these GitHub secrets before pushing release tags:
+The release workflow uploads archives and checksums to GitHub Releases, publishes the crate to crates.io, publishes the Homebrew formula to `hankcraft/homebrew-tap`, and publishes the npm package to `@hankcraft/git-ca`. Configure these GitHub secrets before pushing release tags:
 
-- `GITHUB_TOKEN` with write access to `hankcraft/git-ca` on GitHub.
+- `GH_TOKEN` with write access to `hankcraft/git-ca` on GitHub.
+- `CARGO_REGISTRY_TOKEN` with publish access to the `git-ca` crate on crates.io.
 - `HOMEBREW_TAP_TOKEN` with write access to `hankcraft/homebrew-tap`.
 - `NPM_TOKEN` with publish access to `@hankcraft/git-ca` on npmjs.com.
+
+### Local release
+
+Use the local release script when you want to publish from your own machine instead of relying on GitHub Actions. It defaults to a dry run and requires `--execute` before creating or publishing anything.
+
+Dry-run the local release checks:
+
+```sh
+scripts/release-local.sh
+```
+
+Publish all local release channels:
+
+```sh
+scripts/release-local.sh --execute --homebrew-tap-dir ../homebrew-tap
+```
+
+Skip one channel if it was already published or should stay manual:
+
+```sh
+scripts/release-local.sh --execute --homebrew-tap-dir ../homebrew-tap --skip npm
+scripts/release-local.sh --execute --homebrew-tap-dir ../homebrew-tap --skip homebrew
+scripts/release-local.sh --execute --homebrew-tap-dir ../homebrew-tap --skip crates
+```
+
+Local publishing requirements:
+
+- GitHub Release hosting: `GH_TOKEN` or an authenticated cargo-dist/GitHub CLI setup with write access to `hankcraft/git-ca`.
+- crates.io: `cargo login` or `CARGO_REGISTRY_TOKEN` with publish access to `git-ca`.
+- npm: `npm login`, `.npmrc`, or `NODE_AUTH_TOKEN` with publish access to `@hankcraft/git-ca`.
+- Homebrew: a clean local checkout of `hankcraft/homebrew-tap` with push access, passed with `--homebrew-tap-dir` or `HOMEBREW_TAP_DIR`.
+
+Copy `.env.example` to `.env` if you want a local template for release-related environment variables. Do not commit `.env`.
 
 cargo-dist currently builds `git-ca` for `x86_64-apple-darwin`, `aarch64-apple-darwin`, and `x86_64-unknown-linux-gnu`, so the Homebrew formula supports macOS and Linuxbrew on x86_64 Linux.
 
