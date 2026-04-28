@@ -28,6 +28,7 @@ async fn run(cli: Cli) -> Result<()> {
         None => commit(cli.model, cli.no_verify, cli.yes).await,
         Some(Command::Auth { action }) => match action {
             AuthAction::Login { account } => auth_login(account).await,
+            AuthAction::SetToken { account, token } => auth_set_token(&account, &token).await,
             AuthAction::Logout { account } => auth_logout(account).await,
             AuthAction::Use { account } => auth_use(&account).await,
             AuthAction::Status => auth_status().await,
@@ -89,6 +90,19 @@ async fn auth_login(account: Option<String>) -> Result<()> {
     file.set_github_token(&account, token);
     file.save()?;
     println!("Logged in as {account}. GitHub token stored.");
+    Ok(())
+}
+
+async fn auth_set_token(account: &str, token: &str) -> Result<()> {
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(Error::Config("token cannot be empty".to_string()));
+    }
+
+    let mut file = auth::AuthFile::load()?;
+    file.set_github_token(account, token.to_string());
+    file.save()?;
+    println!("Token stored for {account}.");
     Ok(())
 }
 

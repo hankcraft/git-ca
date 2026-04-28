@@ -46,6 +46,10 @@ Print version information.
 Log in with GitHub device flow. When ACCOUNT is provided, store credentials
 for that named account and make it active.
 .TP
+.BI "auth set-token [--account " ACCOUNT "] " TOKEN
+Store a GitHub token manually and make that account active. If ACCOUNT is not
+provided, the token is stored under the default account.
+.TP
 .BI "auth use " ACCOUNT
 Select the named account for Copilot-backed commands.
 .TP
