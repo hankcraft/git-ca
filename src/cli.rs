@@ -49,6 +49,14 @@ pub enum Command {
 pub enum AuthAction {
     /// Log in via GitHub device flow.
     Login { account: Option<String> },
+    /// Store a GitHub token manually instead of using device flow.
+    SetToken {
+        /// Account name to store the token under.
+        #[arg(long, default_value = "default")]
+        account: String,
+        /// GitHub token with Copilot access.
+        token: String,
+    },
     /// Forget locally stored tokens.
     ///
     /// This only deletes the on-disk credentials. To revoke the GitHub OAuth
@@ -143,6 +151,38 @@ mod tests {
             Some(Command::Auth {
                 action: AuthAction::Login { account }
             }) if account.as_deref() == Some("work")
+        ));
+    }
+
+    #[test]
+    fn parses_auth_set_token_default_account() {
+        let cli = Cli::try_parse_from(["git-ca", "auth", "set-token", "gho_manual"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Auth {
+                action: AuthAction::SetToken { account, token }
+            }) if account == "default" && token == "gho_manual"
+        ));
+    }
+
+    #[test]
+    fn parses_auth_set_token_named_account() {
+        let cli = Cli::try_parse_from([
+            "git-ca",
+            "auth",
+            "set-token",
+            "--account",
+            "work",
+            "gho_manual",
+        ])
+        .unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Auth {
+                action: AuthAction::SetToken { account, token }
+            }) if account == "work" && token == "gho_manual"
         ));
     }
 

@@ -49,6 +49,13 @@ git ca auth login work
 git ca auth use work
 ```
 
+Or store a GitHub token manually:
+
+```sh
+git ca auth set-token <github-token>
+git ca auth set-token --account work <github-token>
+```
+
 Create a commit:
 
 ```sh
@@ -84,6 +91,7 @@ git ca --no-verify
 - Supports persisted auto-accept via `git ca config set-auto-accept`.
 - Lists chat models available to the authenticated Copilot account.
 - Uses GitHub device flow for login.
+- Can store a GitHub token manually for environments where device flow is not practical.
 - Supports multiple named GitHub accounts with an active-account selector.
 - Stores local auth/config files under the platform config directory with restrictive Unix permissions.
 - Caches Copilot API tokens and refreshes them when expired or rejected.
@@ -100,6 +108,8 @@ git ca --no-verify
 | `git ca --no-verify` | Pass `--no-verify` through to `git commit` |
 | `git ca auth login` | Log in with GitHub device flow |
 | `git ca auth login <account>` | Log in and store credentials for a named GitHub account |
+| `git ca auth set-token <token>` | Store a GitHub token manually as the default active account |
+| `git ca auth set-token --account <account> <token>` | Store a GitHub token manually for a named account |
 | `git ca auth use <account>` | Select the named account for Copilot-backed commands |
 | `git ca auth logout` | Delete locally stored tokens |
 | `git ca auth logout <account>` | Delete locally stored tokens for one named account |
