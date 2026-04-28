@@ -231,6 +231,7 @@ git push origin v0.1.0
 
 The release workflow uploads archives and checksums to GitHub Releases, publishes the Homebrew formula to `hankcraft/homebrew-tap`, and publishes the npm package to `@hankcraft/git-ca`. Configure these GitHub secrets before pushing release tags:
 
+- `GITHUB_TOKEN` with write access to `hankcraft/git-ca` on GitHub.
 - `HOMEBREW_TAP_TOKEN` with write access to `hankcraft/homebrew-tap`.
 - `NPM_TOKEN` with publish access to `@hankcraft/git-ca` on npmjs.com.
 
