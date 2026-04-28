@@ -234,12 +234,28 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release workflow uploads archives and checksums to GitHub Releases, publishes the crate to crates.io, publishes the Homebrew formula to `hankcraft/homebrew-tap`, and publishes the npm package to `@hankcraft/git-ca`. Configure these GitHub secrets before pushing release tags:
+The release workflow uploads archives and checksums to GitHub Releases, then runs cargo-dist custom publish jobs for crates.io, Homebrew, and npm. Keep these jobs configured through `dist-workspace.toml` instead of editing the generated `.github/workflows/release.yml` directly:
 
-- `GH_TOKEN` with write access to `hankcraft/git-ca` on GitHub.
+```toml
+publish-jobs = ["./publish-homebrew", "./publish-npm", "./publish-crates"]
+```
+
+`dist init` may warn that the built-in Homebrew publish job is disabled. That is expected because `.github/workflows/publish-homebrew.yml` owns Homebrew publishing so the tap commit author can be customized.
+
+Configure these repository secrets before pushing release tags:
+
 - `CARGO_REGISTRY_TOKEN` with publish access to the `git-ca` crate on crates.io.
 - `HOMEBREW_TAP_TOKEN` with write access to `hankcraft/homebrew-tap`.
-- `NPM_TOKEN` with publish access to `@hankcraft/git-ca` on npmjs.com.
+
+The generated release workflow uses GitHub Actions' automatic `GITHUB_TOKEN` for GitHub Releases. Do not add a repository secret named `GITHUB_TOKEN`.
+
+npm publishing uses npm Trusted Publishing with GitHub Actions OIDC, not `NPM_TOKEN`. Configure the npm package trusted publisher on npmjs.com with:
+
+- Provider: GitHub Actions
+- Organization or user: `hankcraft`
+- Repository: `git-ca`
+- Workflow filename: `publish-npm.yml`
+- Environment name: unset unless the workflow is changed to use a GitHub environment
 
 ### Local release
 
@@ -274,7 +290,7 @@ Local publishing requirements:
 
 Copy `.env.example` to `.env` if you want a local template for release-related environment variables. Do not commit `.env`.
 
-cargo-dist currently builds `git-ca` for `x86_64-apple-darwin`, `aarch64-apple-darwin`, and `x86_64-unknown-linux-gnu`, so the Homebrew formula supports macOS and Linuxbrew on x86_64 Linux.
+cargo-dist currently builds `git-ca` for `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`, and `aarch64-unknown-linux-gnu`, so the Homebrew formula supports macOS and Linuxbrew on x86_64 and aarch64 Linux.
 
 Production Homebrew releases install `docs/man/git-ca.1` automatically, so `git ca --help` can resolve Git's manual page after `brew install hankcraft/tap/git-ca`.
 
