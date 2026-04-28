@@ -1,0 +1,52 @@
+name: Publish Homebrew
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    env:
+      PLAN: ${{ inputs.plan }}
+      GITHUB_USER: "hankcraft-release-bot"
+      GITHUB_EMAIL: "admin+bot@hankcraft.io"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: true
+          repository: "hankcraft/homebrew-tap"
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Fetch homebrew formulae
+        uses: actions/download-artifact@v7
+        with:
+          pattern: artifacts-*
+          path: Formula/
+          merge-multiple: true
+
+      - name: Commit formula files
+        run: |
+          git config --global user.name "${GITHUB_USER}"
+          git config --global user.email "${GITHUB_EMAIL}"
+
+          for release in $(echo "$PLAN" | jq --compact-output '.releases[] | select([.artifacts[] | endswith(".rb")] | any)'); do
+            filename=$(echo "$release" | jq '.artifacts[] | select(endswith(".rb"))' --raw-output)
+            name=$(echo "$filename" | sed "s/\.rb$//")
+            version=$(echo "$release" | jq .app_version --raw-output)
+
+            ruby -0pi -e 'sub(%Q{    install_binary_aliases!\n\n    # Homebrew}, %Q{    install_binary_aliases!\n    man1.install "git-ca.1" if File.exist?("git-ca.1")\n\n    # Homebrew}); sub(%Q{    leftover_contents = Dir["*"] - doc_files\n}, %Q{    leftover_contents = Dir["*"] - doc_files\n    leftover_contents -= ["git-ca.1"]\n})' "Formula/${filename}"
+
+            export PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"
+            brew update
+            # Avoid reformatting user-provided metadata such as description and homepage.
+            brew style --except-cops FormulaAudit/Homepage,FormulaAudit/Desc,FormulaAuditStrict --fix "Formula/${filename}" || true
+
+            git add "Formula/${filename}"
+            git commit -m "${name} ${version}"
+          done
+
+          git push

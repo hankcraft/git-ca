@@ -28,18 +28,9 @@ wiremock = "0.6"
 [profile.release]
 lto = "thin"
 
-[workspace]
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
 
-[workspace.metadata.dist]
-cargo-dist-version = "0.31.0"
-ci = ["github"]
-installers = ["homebrew", "npm"]
-include = ["docs/man/git-ca.1"]
-npm-scope = "@hankcraft"
-targets = [
-    "x86_64-apple-darwin",
-    "aarch64-apple-darwin",
-    "x86_64-unknown-linux-gnu",
-]
-tap = "hankcraft/homebrew-tap"
-publish-jobs = ["homebrew", "npm"]
+[workspace]

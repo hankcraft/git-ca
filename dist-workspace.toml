@@ -1,0 +1,33 @@
+[workspace]
+members = ["cargo:."]
+
+# Config for 'dist'
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.31.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["npm", "homebrew"]
+# Extra static files to include in each App (path relative to this Cargo.toml's dir)
+include = ["docs/man/git-ca.1"]
+# A namespace to use when publishing this package to the npm registry
+npm-scope = "@hankcraft"
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]
+# A GitHub repo to push Homebrew formulas to
+tap = "hankcraft/homebrew-tap"
+# Publish jobs to run in CI
+publish-jobs = ["./publish-homebrew", "./publish-npm", "./publish-crates"]
+
+[dist.github-custom-job-permissions.publish-homebrew]
+actions = "read"
+contents = "read"
+
+[dist.github-custom-job-permissions.publish-npm]
+actions = "read"
+contents = "read"
+id-token = "write"
+
+[dist.github-custom-job-permissions.publish-crates]
+contents = "read"
