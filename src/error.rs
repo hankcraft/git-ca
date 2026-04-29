@@ -25,6 +25,9 @@ pub enum Error {
     #[error("nothing staged — use `git add` first")]
     NoStagedChanges,
 
+    #[error("not a git repository — run git-ca from inside a Git working tree")]
+    NotGitRepository,
+
     #[error("git {0} exited with status {1}")]
     Git(String, i32),
 
@@ -50,7 +53,7 @@ impl Error {
             | Error::CopilotServer { .. }
             | Error::Network(_)
             | Error::EmptyModelResponse => 3,
-            Error::NoStagedChanges => 1,
+            Error::NoStagedChanges | Error::NotGitRepository => 1,
             Error::Git(_, code) => *code,
             Error::Io(_) | Error::Serde(_) | Error::Config(_) => 1,
         }

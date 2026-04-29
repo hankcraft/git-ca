@@ -45,6 +45,7 @@ async fn run(cli: Cli) -> Result<()> {
 }
 
 async fn commit(model_override: Option<String>, no_verify: bool, yes: bool) -> Result<()> {
+    git::ensure_work_tree()?;
     let diff = git::diff::staged_diff()?;
     let http = http_client()?;
     let cfg = config::Config::load()?;
