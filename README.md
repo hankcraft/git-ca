@@ -212,13 +212,56 @@ Releases are built by cargo-dist and can be published either from GitHub Actions
 
 Push a version tag to publish GitHub Release artifacts, crates.io, Homebrew, and npm from CI.
 
-1. Update `version` in `Cargo.toml`.
-2. Run `cargo fmt --check`.
-3. Run `cargo clippy --all-targets --all-features -- -D warnings`.
-4. Run `cargo test`.
-5. Run `cargo publish --dry-run --locked`.
-6. Run `dist plan --allow-dirty`.
-7. Build the release binary locally if you want an extra smoke test:
+### Bump version
+
+Use `cargo-release` to bump `Cargo.toml`, refresh `Cargo.lock`, update the manual page header, create the version commit, and create the matching `v*` tag. The project release settings live in `release.toml`.
+
+Install the release helper once:
+
+```sh
+cargo install cargo-release
+```
+
+Preview a patch release without writing changes:
+
+```sh
+cargo release patch
+```
+
+Create the version commit and tag:
+
+```sh
+cargo release patch --execute
+```
+
+Use `minor`, `major`, or an exact SemVer version when needed:
+
+```sh
+cargo release minor --execute
+cargo release major --execute
+cargo release 0.2.0 --execute
+```
+
+`cargo-release` runs `cargo check` before committing so `Cargo.lock` is included when the package version changes. It also updates `docs/man/git-ca.1` from this template:
+
+```roff
+.TH GIT-CA 1 "{{date}}" "git-ca {{version}}" "User Commands"
+```
+
+The generated tag uses `v{{version}}`, which is the tag format cargo-dist uses for GitHub Actions releases. `release.toml` keeps `publish = false` and `push = false` so publishing stays in GitHub Actions and the maintainer explicitly pushes the release tag.
+
+Do not reuse a version already published to crates.io or npm. Published package versions are immutable.
+
+Release checklist:
+
+1. Run `cargo release patch`, `cargo release minor`, or `cargo release <version>` and inspect the dry-run output.
+2. Run `cargo release patch --execute`, `cargo release minor --execute`, or `cargo release <version> --execute`.
+3. Run `cargo fmt --check`.
+4. Run `cargo clippy --all-targets --all-features -- -D warnings`.
+5. Run `cargo test`.
+6. Run `cargo publish --dry-run --locked`.
+7. Run `dist plan --allow-dirty`.
+8. Build the release binary locally if you want an extra smoke test:
 
 ```sh
 cargo build --release
@@ -227,11 +270,11 @@ target/release/git-ca auth --help
 target/release/git-ca config --help
 ```
 
-8. Commit the version change and create a version tag:
+9. Push the version commit and matching tag:
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git push origin main
+git push origin v0.2.0
 ```
 
 The release workflow uploads archives and checksums to GitHub Releases, then runs cargo-dist custom publish jobs for crates.io, Homebrew, and npm. Keep these jobs configured through `dist-workspace.toml` instead of editing the generated `.github/workflows/release.yml` directly:

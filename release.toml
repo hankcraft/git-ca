@@ -1,0 +1,14 @@
+allow-branch = ["main"]
+pre-release-commit-message = "chore: bump version to {{version}}"
+tag-name = "v{{version}}"
+tag-message = "Release {{crate_name}} {{version}}"
+publish = false
+push = false
+verify = false
+pre-release-hook = ["cargo", "check"]
+
+[[pre-release-replacements]]
+file = "docs/man/git-ca.1"
+search = '''(?m)^\.TH GIT-CA 1 "[0-9]{4}-[0-9]{2}-[0-9]{2}" "git-ca [^"]+" "User Commands"$'''
+replace = '''.TH GIT-CA 1 "{{date}}" "git-ca {{version}}" "User Commands"'''
+exactly = 1
