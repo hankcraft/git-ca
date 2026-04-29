@@ -297,8 +297,10 @@ npm publishing uses npm Trusted Publishing with GitHub Actions OIDC, not `NPM_TO
 - Provider: GitHub Actions
 - Organization or user: `hankcraft`
 - Repository: `git-ca`
-- Workflow filename: `publish-npm.yml`
+- Workflow filename: `release.yml`
 - Environment name: unset unless the workflow is changed to use a GitHub environment
+
+The publish command lives in the reusable `.github/workflows/publish-npm.yml` workflow, but cargo-dist calls it from `.github/workflows/release.yml`. npm validates the calling workflow for `workflow_call` publishes, so the trusted publisher must use `release.yml`.
 
 ### Local release
 
