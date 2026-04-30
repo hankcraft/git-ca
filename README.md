@@ -93,7 +93,7 @@ git ca --no-verify
 - Uses GitHub device flow for login.
 - Can store a GitHub token manually for environments where device flow is not practical.
 - Supports multiple named GitHub accounts with an active-account selector.
-- Stores local auth/config files under the platform config directory with restrictive Unix permissions.
+- Stores local auth/config files under `$XDG_CONFIG_HOME/git-ca` or `~/.config/git-ca` with restrictive Unix permissions.
 - Caches Copilot API tokens and refreshes them when expired or rejected.
 - Retries transient Copilot/network failures with short backoff.
 - Applies HTTP connect and request timeouts so stalled endpoints do not hang the CLI indefinitely.
@@ -341,7 +341,7 @@ Production Homebrew releases install `docs/man/git-ca.1` automatically, so `git 
 
 ## Configuration Files
 
-`git-ca` uses the platform config directory reported by the `directories` crate. On Linux this is typically:
+`git-ca` stores configuration under `$XDG_CONFIG_HOME/git-ca` when `XDG_CONFIG_HOME` is set, otherwise under `~/.config/git-ca`:
 
 ```text
 ~/.config/git-ca/config.json
