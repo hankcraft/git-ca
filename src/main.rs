@@ -7,7 +7,7 @@ mod error;
 mod git;
 
 use clap::Parser;
-use cli::{AuthAction, Cli, Command, ConfigAction};
+use cli::{AuthAction, Cli, Command, ConfigAction, Provider};
 use error::{Error, Result};
 
 #[tokio::main]
@@ -27,7 +27,7 @@ async fn run(cli: Cli) -> Result<()> {
     match cli.command {
         None => commit(cli.model, cli.no_verify, cli.yes).await,
         Some(Command::Auth { action }) => match action {
-            AuthAction::Login { account } => auth_login(account).await,
+            AuthAction::Login { provider, account } => auth_login(provider, account).await,
             AuthAction::SetToken { account, token } => auth_set_token(&account, &token).await,
             AuthAction::Logout { account } => auth_logout(account).await,
             AuthAction::Use { account } => auth_use(&account).await,
@@ -80,17 +80,26 @@ fn http_client() -> Result<reqwest::Client> {
         .map_err(Into::into)
 }
 
-async fn auth_login(account: Option<String>) -> Result<()> {
-    use auth::device_flow::{self, GITHUB_BASE, VSCODE_COPILOT_CLIENT_ID};
-
+async fn auth_login(provider: Provider, account: Option<String>) -> Result<()> {
     let account = account.unwrap_or_else(|| "default".to_string());
     let http = http_client()?;
-    let token = device_flow::run(&http, GITHUB_BASE, VSCODE_COPILOT_CLIENT_ID).await?;
-
     let mut file = auth::AuthFile::load()?;
-    file.set_copilot_github_token(&account, token);
-    file.save()?;
-    println!("Logged in as {account}. GitHub token stored.");
+
+    match provider {
+        Provider::Copilot => {
+            use auth::device_flow::{self, GITHUB_BASE, VSCODE_COPILOT_CLIENT_ID};
+            let token = device_flow::run(&http, GITHUB_BASE, VSCODE_COPILOT_CLIENT_ID).await?;
+            file.set_copilot_github_token(&account, token);
+            file.save()?;
+            println!("Logged in as {account} (copilot). GitHub token stored.");
+        }
+        Provider::Codex => {
+            let tokens = auth::codex::oauth::run(&http).await?;
+            file.set_codex_tokens(&account, tokens);
+            file.save()?;
+            println!("Logged in as {account} (codex). ChatGPT tokens stored.");
+        }
+    }
     Ok(())
 }
 
@@ -134,31 +143,57 @@ async fn auth_use(account: &str) -> Result<()> {
 async fn auth_status() -> Result<()> {
     let file = auth::AuthFile::load()?;
     let active = file.active_account();
-    match active.and_then(|account| account.github_token()) {
-        Some(_) => println!("GitHub: logged in"),
-        None => println!("GitHub: not logged in (run `git ca auth login`)"),
+    match active {
+        Some(account) => {
+            println!(
+                "Active account: {} ({})",
+                account.name,
+                account.provider_label()
+            );
+        }
+        None => {
+            println!("Not logged in (run `git ca auth login`)");
+        }
     }
-    if let Some(account) = active {
-        println!("Active account: {}", account.name);
-    }
-    let accounts: Vec<&str> = file.account_names().collect();
+    let accounts: Vec<String> = file
+        .accounts
+        .values()
+        .map(|a| format!("{} ({})", a.name, a.provider_label()))
+        .collect();
     if !accounts.is_empty() {
         println!("Accounts: {}", accounts.join(", "));
     }
-    match active.and_then(|account| account.copilot_cache()) {
-        Some(c) => {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            let remaining = c.expires_at - now;
-            if remaining > 0 {
-                println!("Copilot token: valid for {remaining}s");
-            } else {
-                println!("Copilot token: expired (will refresh on next use)");
+    if let Some(account) = active {
+        match &account.credential {
+            auth::store::Credential::Copilot { copilot_cache, .. } => match copilot_cache {
+                Some(c) => {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    let remaining = c.expires_at - now;
+                    if remaining > 0 {
+                        println!("Copilot token: valid for {remaining}s");
+                    } else {
+                        println!("Copilot token: expired (will refresh on next use)");
+                    }
+                }
+                None => println!("Copilot token: none cached (will fetch on next use)"),
+            },
+            auth::store::Credential::Codex {
+                tokens,
+                last_refresh,
+            } => {
+                match tokens.account_id.as_deref() {
+                    Some(id) => println!("ChatGPT account: {id}"),
+                    None => println!("ChatGPT account: (none linked)"),
+                }
+                match last_refresh {
+                    Some(ts) => println!("Last refresh: {ts} (unix)"),
+                    None => println!("Last refresh: (never since login)"),
+                }
             }
         }
-        None => println!("Copilot token: none cached (will fetch on next use)"),
     }
     Ok(())
 }

@@ -19,6 +19,9 @@ pub enum Error {
     #[error("Copilot API {status}: {body}")]
     CopilotServer { status: u16, body: String },
 
+    #[error("Codex login: {0}")]
+    CodexLogin(String),
+
     #[error("LLM returned an empty message")]
     EmptyModelResponse,
 
@@ -48,7 +51,10 @@ impl Error {
     /// Exit code mapped to error variant. See plan for the table.
     pub fn exit_code(&self) -> i32 {
         match self {
-            Error::NotAuthenticated | Error::DeviceFlow(_) | Error::CopilotAuth => 2,
+            Error::NotAuthenticated
+            | Error::DeviceFlow(_)
+            | Error::CopilotAuth
+            | Error::CodexLogin(_) => 2,
             Error::CopilotRateLimited { .. }
             | Error::CopilotServer { .. }
             | Error::Network(_)

@@ -185,10 +185,6 @@ impl AuthFile {
         self.accounts.get_mut(&name)
     }
 
-    pub fn account_names(&self) -> impl Iterator<Item = &str> {
-        self.accounts.keys().map(String::as_str)
-    }
-
     /// Store a GitHub token for a Copilot account, replacing any prior
     /// credential so `set-token` cannot leave a stale Codex/Copilot mix on
     /// disk.
@@ -200,6 +196,22 @@ impl AuthFile {
                 credential: Credential::Copilot {
                     github_token: token,
                     copilot_cache: None,
+                },
+            },
+        );
+        self.active_account = Some(name.to_string());
+    }
+
+    /// Store ChatGPT OAuth tokens for a Codex account, replacing any prior
+    /// credential.
+    pub fn set_codex_tokens(&mut self, name: &str, tokens: ChatGptTokens) {
+        self.accounts.insert(
+            name.to_string(),
+            AccountAuth {
+                name: name.to_string(),
+                credential: Credential::Codex {
+                    tokens,
+                    last_refresh: None,
                 },
             },
         );
@@ -223,6 +235,13 @@ impl AuthFile {
 }
 
 impl AccountAuth {
+    pub fn provider_label(&self) -> &'static str {
+        match &self.credential {
+            Credential::Copilot { .. } => "copilot",
+            Credential::Codex { .. } => "codex",
+        }
+    }
+
     pub fn github_token(&self) -> Option<&str> {
         match &self.credential {
             Credential::Copilot { github_token, .. } => Some(github_token.as_str()),
