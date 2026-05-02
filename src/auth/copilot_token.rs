@@ -17,7 +17,7 @@ struct ExchangeResp {
 pub async fn ensure(http: &reqwest::Client, api_base: &str, file: &mut AuthFile) -> Result<String> {
     if let Some(cache) = file
         .active_account()
-        .and_then(|account| account.copilot.as_ref())
+        .and_then(|account| account.copilot_cache())
     {
         if cache.expires_at - now_unix() > REFRESH_SKEW_SECS {
             return Ok(cache.token.clone());
@@ -36,13 +36,13 @@ pub async fn refresh(
 ) -> Result<String> {
     let gh_token = file
         .active_account()
-        .and_then(|account| account.github_token.as_deref())
+        .and_then(|account| account.github_token())
         .ok_or(Error::NotAuthenticated)?
         .to_string();
     let cache = exchange_token(http, api_base, &gh_token).await?;
     let token = cache.token.clone();
     let account = file.active_account_mut().ok_or(Error::NotAuthenticated)?;
-    account.copilot = Some(cache);
+    account.set_copilot_cache(cache)?;
     file.save()?;
     Ok(token)
 }
@@ -102,11 +102,13 @@ mod tests {
                 "default".into(),
                 crate::auth::store::AccountAuth {
                     name: "default".into(),
-                    github_token: Some("gho_x".into()),
-                    copilot: Some(CopilotCache {
-                        token: "cached".into(),
-                        expires_at: now_unix() + 3600,
-                    }),
+                    credential: crate::auth::store::Credential::Copilot {
+                        github_token: "gho_x".into(),
+                        copilot_cache: Some(CopilotCache {
+                            token: "cached".into(),
+                            expires_at: now_unix() + 3600,
+                        }),
+                    },
                 },
             )]),
         };
