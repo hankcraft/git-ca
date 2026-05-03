@@ -85,7 +85,7 @@ git ca pr --source commits
 git ca pr --yes
 ```
 
-`git ca pr` compares the current branch to the base branch, drafts a PR title and Markdown body, opens the draft in your editor, and then runs `gh pr create`. It requires the GitHub CLI (`gh`) to be installed and authenticated. By default it summarizes the branch diff; use `--source commits` to summarize commit messages instead. `--yes` skips the editor and creates the PR directly.
+`git ca pr` compares the current branch to the base branch, drafts a PR title and Markdown body, opens the draft in your editor, and then runs `gh pr create`. It requires the GitHub CLI (`gh`) to be installed and authenticated. By default it summarizes the branch diff; use `--source commits` to summarize commit messages instead. `--yes` skips the editor and creates the PR directly. Persisted `config.auto_accept_pr` does the same for PRs.
 
 Useful commands:
 
@@ -98,7 +98,6 @@ git ca --model <model-id>
 git ca -m <model-id>
 git ca --yes
 git ca -y
-git ca --auto-accept
 git ca --no-verify
 ```
 
@@ -109,10 +108,12 @@ git ca --no-verify
 - Two interchangeable backends: GitHub Copilot or OpenAI Codex (ChatGPT).
 - Prompts the active backend to produce Conventional Commits output.
 - Opens the generated message in the normal Git commit editor before committing.
-- Can commit the generated message directly with `--yes` / `-y` / `--auto-accept` or persisted config.
+- Can commit the generated message directly with `--yes` / `-y` or persisted commit auto-accept config.
+- Can create generated pull requests directly with `--yes` / `-y` or persisted PR auto-accept config.
 - Supports per-command model override with `--model`.
 - Supports a persisted default model via `git ca config set-model`.
-- Supports persisted auto-accept via `git ca config set-auto-accept`.
+- Supports persisted commit auto-accept via `git ca config set-auto-accept`.
+- Supports persisted PR auto-accept via `git ca config set-auto-accept-pr`.
 - Lists chat models available to the authenticated Copilot account; for Codex, prints the known model slugs.
 - Copilot login uses GitHub device flow; Codex login uses ChatGPT OAuth (PKCE) with a localhost callback.
 - Can store a GitHub token manually for Copilot in environments where device flow is not practical.
@@ -131,7 +132,7 @@ git ca --no-verify
 | `git ca pr --base <branch>` | Compare the current branch against a specific PR base branch |
 | `git ca pr --source commits` | Draft PR text from commit messages instead of the branch diff |
 | `git ca --model <id>`, `git ca -m <id>` | Use a specific Copilot model for this commit |
-| `git ca --yes`, `git ca -y`, `git ca --auto-accept` | Commit the generated message without opening the editor |
+| `git ca --yes`, `git ca -y` | Accept generated text without opening the editor; for PRs this creates the PR directly |
 | `git ca --no-verify` | Pass `--no-verify` through to `git commit` |
 | `git ca auth login` | Prompt for backend on a TTY, then log in (defaults to Copilot when stdin is not a TTY) |
 | `git ca auth login <account>` | Same prompt behavior, then store credentials for the named account |
@@ -146,8 +147,10 @@ git ca --no-verify
 | `git ca config list` | Print all persisted config values |
 | `git ca config set-model <id>` | Persist the default model |
 | `git ca config get-model` | Print the persisted default model |
-| `git ca config set-auto-accept <true|false>` | Persist whether generated messages commit without opening the editor |
-| `git ca config get-auto-accept` | Print the persisted auto-accept setting |
+| `git ca config set-auto-accept <true|false>` | Persist whether generated commit messages commit without opening the editor |
+| `git ca config get-auto-accept` | Print the persisted commit auto-accept setting |
+| `git ca config set-auto-accept-pr <true|false>` | Persist whether generated PRs are created without opening the editor |
+| `git ca config get-auto-accept-pr` | Print the persisted PR auto-accept setting |
 
 `auth logout` only removes local credentials. Revoke the OAuth grant separately from GitHub account settings if the server-side grant should be invalidated.
 
@@ -199,7 +202,7 @@ Runtime flow for `git ca`:
 6. Strip an accidental outer code fence from the model response.
 7. Write `.git/COMMIT_EDITMSG`.
 8. Run `git commit -e -F .git/COMMIT_EDITMSG`, optionally with `--no-verify`.
-9. If `--yes` / `-y` / `--auto-accept` or `config.auto_accept` is enabled, run `git commit -F .git/COMMIT_EDITMSG` instead so Git commits the generated message directly.
+9. If `--yes` / `-y` or `config.auto_accept` is enabled, run `git commit -F .git/COMMIT_EDITMSG` instead so Git commits the generated message directly.
 
 Runtime flow for `git ca pr`:
 
@@ -209,7 +212,7 @@ Runtime flow for `git ca pr`:
 4. Resolve the active account's backend and model the same way `git ca` does.
 5. Ask the backend for compact JSON containing `title` and `body`.
 6. Parse and validate the generated PR text.
-7. Unless `--yes` is set, write `.git/PULL_REQUEST_EDITMSG`, open the configured Git editor, and read back the edited title/body.
+7. Unless `--yes` / `-y` or `config.auto_accept_pr` is enabled, write `.git/PULL_REQUEST_EDITMSG`, open the configured Git editor, and read back the edited title/body.
 8. Write `.git/PULL_REQUEST_BODY` and run `gh pr create --base <base> --title <title> --body-file <path>`.
 
 ### Codex backend caveat

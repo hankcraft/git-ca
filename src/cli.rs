@@ -29,13 +29,8 @@ pub struct Cli {
     #[arg(short = 'm', long = "model", global = true)]
     pub model: Option<String>,
 
-    /// Commit the generated message without opening the editor.
-    #[arg(
-        short = 'y',
-        long = "yes",
-        visible_alias = "auto-accept",
-        global = true
-    )]
+    /// Accept generated text without opening the editor.
+    #[arg(short = 'y', long = "yes", global = true)]
     pub yes: bool,
 }
 
@@ -112,13 +107,20 @@ pub enum ConfigAction {
     SetModel { id: String },
     /// Print the default model (if any).
     GetModel,
-    /// Set whether generated messages are committed without opening the editor.
+    /// Set whether generated commit messages are committed without opening the editor.
     SetAutoAccept {
         #[arg(action = clap::ArgAction::Set)]
         value: bool,
     },
-    /// Print whether generated messages are committed without opening the editor.
+    /// Print whether generated commit messages are committed without opening the editor.
     GetAutoAccept,
+    /// Set whether generated pull requests are created without opening the editor.
+    SetAutoAcceptPr {
+        #[arg(action = clap::ArgAction::Set)]
+        value: bool,
+    },
+    /// Print whether generated pull requests are created without opening the editor.
+    GetAutoAcceptPr,
 }
 
 #[cfg(test)]
@@ -148,10 +150,10 @@ mod tests {
     }
 
     #[test]
-    fn parses_auto_accept_alias() {
-        let cli = Cli::try_parse_from(["git-ca", "--auto-accept"]).unwrap();
+    fn rejects_auto_accept_flag_alias() {
+        let err = Cli::try_parse_from(["git-ca", "--auto-accept"]).unwrap_err();
 
-        assert!(cli.yes);
+        assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
     }
 
     #[test]
@@ -162,6 +164,30 @@ mod tests {
             cli.command,
             Some(Command::Config {
                 action: ConfigAction::SetAutoAccept { value: true }
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_set_auto_accept_pr_value() {
+        let cli = Cli::try_parse_from(["git-ca", "config", "set-auto-accept-pr", "true"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Config {
+                action: ConfigAction::SetAutoAcceptPr { value: true }
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_get_auto_accept_pr() {
+        let cli = Cli::try_parse_from(["git-ca", "config", "get-auto-accept-pr"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Config {
+                action: ConfigAction::GetAutoAcceptPr
             })
         ));
     }

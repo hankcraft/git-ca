@@ -35,9 +35,9 @@ Skip pre-commit and commit-msg hooks.
 Use a specific model id for drafting. The id must be valid for the active
 account's backend. Overrides the persisted default model.
 .TP
-.BR \-y , " \--yes" , " \--auto-accept"
-Commit the generated message or create the generated pull request without
-opening the editor.
+.BR \-y , " \--yes"
+Accept generated text without opening the editor. For commits, this commits
+directly. For pull requests, this creates the pull request directly.
 .TP
 .BR \-h , " \--help"
 Print command help when the binary is invoked directly or through
@@ -97,6 +97,10 @@ falling back to
 The default source is the branch diff against the merge base; use
 .B \--source commits
 to summarize commit messages instead.
+Use
+.B \--yes
+on this command to skip editor review and create the pull request directly.
+Persisted PR auto-accept config has the same effect.
 .TP
 .B config list
 Print all persisted config values.
@@ -110,10 +114,17 @@ has no listing endpoint.
 Print the persisted default model, if any.
 .TP
 .BI "config set-auto-accept " true|false
-Persist whether generated messages commit without opening the editor.
+Persist whether generated commit messages commit without opening the editor.
+This setting does not apply to pull request creation.
 .TP
 .B config get-auto-accept
-Print the persisted auto-accept setting.
+Print the persisted commit auto-accept setting.
+.TP
+.BI "config set-auto-accept-pr " true|false
+Persist whether generated pull requests are created without opening the editor.
+.TP
+.B config get-auto-accept-pr
+Print the persisted PR auto-accept setting.
 .SH EXAMPLES
 .TP
 Draft a commit message and open the editor:
@@ -136,7 +147,7 @@ Show clap-generated help instead of this manual page:
 .SH FILES
 .TP
 .I ~/.config/git-ca/config.json
-User preferences, including default model and auto-accept behavior.
+User preferences, including default model and commit/PR auto-accept behavior.
 .TP
 .I ~/.config/git-ca/auth.json
 Local credential cache. Each account is tagged with its provider; Copilot

@@ -44,6 +44,8 @@ async fn run(cli: Cli) -> Result<()> {
             ConfigAction::GetModel => config_get_model().await,
             ConfigAction::SetAutoAccept { value } => config_set_auto_accept(value).await,
             ConfigAction::GetAutoAccept => config_get_auto_accept().await,
+            ConfigAction::SetAutoAcceptPr { value } => config_set_auto_accept_pr(value).await,
+            ConfigAction::GetAutoAcceptPr => config_get_auto_accept_pr().await,
         },
     }
 }
@@ -72,6 +74,8 @@ async fn pull_request(
 ) -> Result<()> {
     git::ensure_work_tree()?;
     git::pr::ensure_gh_available()?;
+    let cfg = config::Config::load()?;
+    let auto_accept = pr_auto_accept(yes, &cfg);
     let base = base
         .map(git::pr::BaseBranch::explicit)
         .unwrap_or_else(git::pr::default_base);
@@ -83,10 +87,14 @@ async fn pull_request(
     let messages = pr_msg::prompt::build(source, &base.pr_base, &source_text);
     let raw = generate_text(model_override, messages, "drafting PR message").await?;
     let mut draft = pr_msg::parse_json(&raw)?;
-    if !yes {
+    if !auto_accept {
         draft = git::pr::edit_message(&draft)?;
     }
     git::pr::create_pull_request(&base.pr_base, &draft.title, &draft.body)
+}
+
+fn pr_auto_accept(yes: bool, cfg: &config::Config) -> bool {
+    yes || cfg.auto_accept_pr
 }
 
 async fn generate_text(
@@ -370,6 +378,7 @@ fn config_list_lines(cfg: &config::Config) -> Vec<String> {
         )),
     }
     lines.push(format!("auto_accept: {}", cfg.auto_accept));
+    lines.push(format!("auto_accept_pr: {}", cfg.auto_accept_pr));
     lines
 }
 
@@ -424,6 +433,20 @@ async fn config_get_auto_accept() -> Result<()> {
     Ok(())
 }
 
+async fn config_set_auto_accept_pr(value: bool) -> Result<()> {
+    let mut cfg = config::Config::load()?;
+    cfg.auto_accept_pr = value;
+    cfg.save()?;
+    println!("PR auto accept set to {value}.");
+    Ok(())
+}
+
+async fn config_get_auto_accept_pr() -> Result<()> {
+    let cfg = config::Config::load()?;
+    println!("{}", cfg.auto_accept_pr);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,6 +456,7 @@ mod tests {
         let cfg = config::Config {
             default_model: None,
             auto_accept: false,
+            auto_accept_pr: false,
         };
 
         assert_eq!(
@@ -440,8 +464,29 @@ mod tests {
             vec![
                 format!("default_model: {} (fallback)", commit_msg::FALLBACK_MODEL),
                 "auto_accept: false".to_string(),
+                "auto_accept_pr: false".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn pr_auto_accept_uses_flag_or_pr_config_only() {
+        let cfg = config::Config {
+            default_model: None,
+            auto_accept: true,
+            auto_accept_pr: false,
+        };
+
+        assert!(!pr_auto_accept(false, &cfg));
+        assert!(pr_auto_accept(true, &cfg));
+
+        let cfg = config::Config {
+            default_model: None,
+            auto_accept: false,
+            auto_accept_pr: true,
+        };
+
+        assert!(pr_auto_accept(false, &cfg));
     }
 
     #[test]

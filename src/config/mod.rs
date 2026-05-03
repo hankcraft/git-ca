@@ -15,6 +15,9 @@ pub struct Config {
     /// Commit generated messages without opening the editor.
     #[serde(default)]
     pub auto_accept: bool,
+    /// Create generated pull requests without opening the editor.
+    #[serde(default)]
+    pub auto_accept_pr: bool,
 }
 
 impl Config {
@@ -84,12 +87,14 @@ mod tests {
         let cfg = Config {
             default_model: Some("gpt-4o".into()),
             auto_accept: true,
+            auto_accept_pr: true,
         };
         write_json_0600(&path, &cfg).unwrap();
 
         let loaded: Config = read_json_or_default(&path).unwrap();
         assert_eq!(loaded.default_model.as_deref(), Some("gpt-4o"));
         assert!(loaded.auto_accept);
+        assert!(loaded.auto_accept_pr);
 
         #[cfg(unix)]
         {
@@ -108,5 +113,6 @@ mod tests {
         let cfg: Config = read_json_or_default(&path).unwrap();
         assert!(cfg.default_model.is_none());
         assert!(!cfg.auto_accept);
+        assert!(!cfg.auto_accept_pr);
     }
 }
