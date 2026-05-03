@@ -147,7 +147,7 @@ async fn accept_callback(listener: TcpListener, expected_state: &str) -> Result<
                 let _ = write_response(
                     &mut stream,
                     200,
-                    "Login successful — you can close this tab.",
+                    "git-ca received your ChatGPT tokens. You can return to your terminal.",
                 )
                 .await;
                 return Ok(code);
@@ -191,7 +191,7 @@ async fn read_request_line(stream: &mut tokio::net::TcpStream) -> Result<String>
 async fn write_response(
     stream: &mut tokio::net::TcpStream,
     status: u16,
-    body: &str,
+    message: &str,
 ) -> std::io::Result<()> {
     let reason = match status {
         200 => "OK",
@@ -199,16 +199,79 @@ async fn write_response(
         404 => "Not Found",
         _ => "Error",
     };
-    let html = format!(
-        "<!DOCTYPE html><html><body><p>{}</p></body></html>",
-        html_escape(body)
-    );
+    let html = render_callback_page(status, message);
     let response = format!(
         "HTTP/1.1 {status} {reason}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{html}",
         html.len()
     );
     stream.write_all(response.as_bytes()).await?;
     stream.shutdown().await
+}
+
+/// Render the HTML shown in the user's browser after the OAuth redirect.
+///
+/// Dark theme, centered card, single "Close tab" button. The button calls
+/// `window.close()` which only succeeds when the browser opened the tab via
+/// script — for a tab the user clicked into directly the call is a no-op
+/// and the user closes it manually, but the button still hints what to do.
+fn render_callback_page(status: u16, message: &str) -> String {
+    let (title, accent_class) = if status == 200 {
+        ("Login successful", "success")
+    } else {
+        ("Login failed", "error")
+    };
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>git-ca login</title>
+<style>
+:root {{ color-scheme: dark; }}
+html, body {{ margin: 0; padding: 0; height: 100%; }}
+body {{
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}}
+.card {{
+  max-width: 28rem;
+  padding: 2rem;
+  text-align: center;
+}}
+h1 {{ margin: 0 0 0.75rem; font-size: 1.5rem; }}
+p {{ margin: 0 0 1.5rem; color: #8b949e; line-height: 1.5; }}
+button {{
+  border: 0;
+  padding: 0.6rem 1.5rem;
+  border-radius: 0.5rem;
+  font: inherit;
+  font-weight: 500;
+  color: #fff;
+  cursor: pointer;
+}}
+button.success {{ background: #238636; }}
+button.success:hover {{ background: #2ea043; }}
+button.error {{ background: #da3633; }}
+button.error:hover {{ background: #f85149; }}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>{title}</h1>
+<p>{message}</p>
+<button class="{accent_class}" onclick="window.close()">Close tab</button>
+</div>
+</body>
+</html>"#,
+        title = title,
+        message = html_escape(message),
+        accent_class = accent_class,
+    )
 }
 
 fn html_escape(s: &str) -> String {
@@ -387,6 +450,33 @@ mod tests {
     #[test]
     fn parse_query_returns_empty_when_no_question_mark() {
         assert!(parse_query("/auth/callback").is_empty());
+    }
+
+    #[test]
+    fn callback_page_for_200_uses_success_styling() {
+        let html = render_callback_page(200, "tokens received");
+        assert!(html.contains("<title>git-ca login</title>"));
+        assert!(html.contains("Login successful"));
+        assert!(html.contains(r#"class="success""#));
+        assert!(!html.contains(r#"class="error""#));
+        assert!(html.contains("tokens received"));
+        assert!(html.contains("window.close()"));
+    }
+
+    #[test]
+    fn callback_page_for_400_uses_error_styling() {
+        let html = render_callback_page(400, "state mismatch");
+        assert!(html.contains("Login failed"));
+        assert!(html.contains(r#"class="error""#));
+        assert!(!html.contains(r#"class="success""#));
+        assert!(html.contains("state mismatch"));
+    }
+
+    #[test]
+    fn callback_page_escapes_message_html() {
+        let html = render_callback_page(400, "<script>alert(1)</script>");
+        assert!(!html.contains("<script>alert(1)</script>"));
+        assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
     }
 
     fn fake_id_token() -> String {
