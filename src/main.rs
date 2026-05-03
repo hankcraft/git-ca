@@ -72,19 +72,21 @@ async fn pull_request(
 ) -> Result<()> {
     git::ensure_work_tree()?;
     git::pr::ensure_gh_available()?;
-    let base = base.unwrap_or_else(git::pr::default_base);
-    let merge_base = git::pr::merge_base(&base)?;
+    let base = base
+        .map(git::pr::BaseBranch::explicit)
+        .unwrap_or_else(git::pr::default_base);
+    let merge_base = git::pr::merge_base(&base.compare_ref)?;
     let source_text = match source {
         PrSource::Diff => git::pr::branch_diff(&merge_base)?,
         PrSource::Commits => git::pr::commit_log(&merge_base)?,
     };
-    let messages = pr_msg::prompt::build(source, &base, &source_text);
+    let messages = pr_msg::prompt::build(source, &base.pr_base, &source_text);
     let raw = generate_text(model_override, messages, "drafting PR message").await?;
     let mut draft = pr_msg::parse_json(&raw)?;
     if !yes {
         draft = git::pr::edit_message(&draft)?;
     }
-    git::pr::create_pull_request(&base, &draft.title, &draft.body)
+    git::pr::create_pull_request(&base.pr_base, &draft.title, &draft.body)
 }
 
 async fn generate_text(

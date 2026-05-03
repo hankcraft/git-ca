@@ -4,7 +4,22 @@ use std::process::Command;
 use crate::error::{Error, Result};
 use crate::pr_msg::PullRequestMessage;
 
-pub fn default_base() -> String {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BaseBranch {
+    pub pr_base: String,
+    pub compare_ref: String,
+}
+
+impl BaseBranch {
+    pub fn explicit(name: String) -> Self {
+        Self {
+            pr_base: name.clone(),
+            compare_ref: name,
+        }
+    }
+}
+
+pub fn default_base() -> BaseBranch {
     let out = Command::new("git")
         .args([
             "symbolic-ref",
@@ -14,16 +29,26 @@ pub fn default_base() -> String {
         ])
         .output();
     let Ok(out) = out else {
-        return "main".to_string();
+        return fallback_base();
     };
     if !out.status.success() {
-        return "main".to_string();
+        return fallback_base();
     }
-    let branch = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    branch
-        .strip_prefix("origin/")
-        .unwrap_or(branch.as_str())
-        .to_string()
+    base_from_origin_head(String::from_utf8_lossy(&out.stdout).trim())
+}
+
+fn fallback_base() -> BaseBranch {
+    BaseBranch::explicit("main".to_string())
+}
+
+fn base_from_origin_head(branch: &str) -> BaseBranch {
+    if let Some(pr_base) = branch.strip_prefix("origin/") {
+        return BaseBranch {
+            pr_base: pr_base.to_string(),
+            compare_ref: branch.to_string(),
+        };
+    }
+    BaseBranch::explicit(branch.to_string())
 }
 
 pub fn merge_base(base: &str) -> Result<String> {
@@ -201,6 +226,25 @@ mod tests {
                 "--body-file",
                 ".git/PULL_REQUEST_BODY"
             ]
+        );
+    }
+
+    #[test]
+    fn default_origin_head_uses_remote_ref_for_comparison() {
+        assert_eq!(
+            base_from_origin_head("origin/main"),
+            BaseBranch {
+                pr_base: "main".to_string(),
+                compare_ref: "origin/main".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn non_origin_default_base_uses_same_name_for_pr_and_comparison() {
+        assert_eq!(
+            base_from_origin_head("upstream/trunk"),
+            BaseBranch::explicit("upstream/trunk".to_string())
         );
     }
 
