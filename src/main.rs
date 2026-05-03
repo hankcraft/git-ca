@@ -123,7 +123,11 @@ fn http_client() -> Result<reqwest::Client> {
         .map_err(Into::into)
 }
 
-async fn auth_login(provider: Provider, account: Option<String>) -> Result<()> {
+async fn auth_login(provider: Option<Provider>, account: Option<String>) -> Result<()> {
+    let provider = match provider {
+        Some(p) => p,
+        None => resolve_login_provider()?,
+    };
     let account = account.unwrap_or_else(|| "default".to_string());
     let http = http_client()?;
     let mut file = auth::AuthFile::load()?;
@@ -144,6 +148,40 @@ async fn auth_login(provider: Provider, account: Option<String>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Resolve the provider for `auth login` when `--provider` was omitted.
+/// Prompts on a TTY so users discover that two backends exist; defaults to
+/// Copilot in non-interactive contexts (CI, piped stdin) so scripts that
+/// previously relied on the implicit default keep working.
+fn resolve_login_provider() -> Result<Provider> {
+    use std::io::IsTerminal;
+    if !std::io::stdin().is_terminal() {
+        return Ok(Provider::Copilot);
+    }
+    use std::io::{self, BufRead, Write};
+    println!("Choose auth provider:");
+    println!("  [1] copilot  GitHub Copilot via device flow (default)");
+    println!("  [2] codex    OpenAI Codex via ChatGPT OAuth");
+    print!("provider [1]: ");
+    io::stdout().flush().ok();
+    let mut line = String::new();
+    let stdin = io::stdin();
+    stdin.lock().read_line(&mut line)?;
+    parse_provider_input(&line).ok_or_else(|| {
+        Error::Config(format!(
+            "unrecognised provider `{}` — pass --provider copilot|codex explicitly",
+            line.trim()
+        ))
+    })
+}
+
+fn parse_provider_input(s: &str) -> Option<Provider> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "" | "1" | "copilot" => Some(Provider::Copilot),
+        "2" | "codex" => Some(Provider::Codex),
+        _ => None,
+    }
 }
 
 async fn auth_set_token(account: &str, token: &str) -> Result<()> {
@@ -367,5 +405,43 @@ mod tests {
                 "auto_accept: false".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn parse_provider_input_accepts_blank_and_copilot_aliases() {
+        assert!(matches!(parse_provider_input(""), Some(Provider::Copilot)));
+        assert!(matches!(
+            parse_provider_input("\n"),
+            Some(Provider::Copilot)
+        ));
+        assert!(matches!(parse_provider_input("1"), Some(Provider::Copilot)));
+        assert!(matches!(
+            parse_provider_input("copilot"),
+            Some(Provider::Copilot)
+        ));
+        assert!(matches!(
+            parse_provider_input("  COPILOT  "),
+            Some(Provider::Copilot)
+        ));
+    }
+
+    #[test]
+    fn parse_provider_input_accepts_codex_aliases() {
+        assert!(matches!(parse_provider_input("2"), Some(Provider::Codex)));
+        assert!(matches!(
+            parse_provider_input("codex"),
+            Some(Provider::Codex)
+        ));
+        assert!(matches!(
+            parse_provider_input("Codex\n"),
+            Some(Provider::Codex)
+        ));
+    }
+
+    #[test]
+    fn parse_provider_input_rejects_unknown_value() {
+        assert!(parse_provider_input("3").is_none());
+        assert!(parse_provider_input("openai").is_none());
+        assert!(parse_provider_input("foo").is_none());
     }
 }

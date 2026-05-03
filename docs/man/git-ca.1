@@ -46,11 +46,17 @@ Print version information.
 .BI "auth login [\--provider " PROVIDER "] [" ACCOUNT "]"
 Log in via the chosen backend's OAuth flow. PROVIDER is
 .B copilot
-(default, GitHub device flow) or
+(GitHub device flow) or
 .B codex
 (ChatGPT OAuth via PKCE with a localhost callback on :1455 / :1457). When
-ACCOUNT is provided, store credentials for that named account and make it
-active.
+.BI \--provider
+is omitted on an interactive terminal,
+.B auth login
+prompts for a choice; when stdin is not a TTY (CI, piped input) it defaults
+to
+.BR copilot .
+When ACCOUNT is provided, store credentials for that named account and make
+it active.
 .TP
 .BI "auth set-token [--account " ACCOUNT "] " TOKEN
 Store a GitHub token manually for a Copilot account and make it active.

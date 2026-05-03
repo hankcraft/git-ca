@@ -41,17 +41,18 @@ bunx @hankcraft/git-ca --help
 The man page install lets Git's own help path resolve `git ca --help`. For the
 clap-generated command help, `git ca -h` and `git-ca --help` work directly.
 
-Authenticate with GitHub Copilot (default backend):
+Authenticate. With no `--provider`, `git ca auth login` prompts for a backend on a TTY (and defaults to `copilot` when stdin is piped or running in CI):
 
 ```sh
-git ca auth login
-git ca auth login work
+git ca auth login                      # prompts for provider
+git ca auth login work                  # prompts for provider, stores under "work"
 git ca auth use work
 ```
 
-Or authenticate with the Codex (ChatGPT) backend via PKCE OAuth:
+Pick a backend non-interactively:
 
 ```sh
+git ca auth login --provider copilot
 git ca auth login --provider codex
 git ca auth login --provider codex personal
 git ca auth use personal
@@ -117,8 +118,8 @@ git ca --no-verify
 | `git ca --model <id>`, `git ca -m <id>` | Use a specific Copilot model for this commit |
 | `git ca --yes`, `git ca -y`, `git ca --auto-accept` | Commit the generated message without opening the editor |
 | `git ca --no-verify` | Pass `--no-verify` through to `git commit` |
-| `git ca auth login` | Log in with the default backend (Copilot device flow) |
-| `git ca auth login <account>` | Log in and store credentials for a named Copilot account |
+| `git ca auth login` | Prompt for backend on a TTY, then log in (defaults to Copilot when stdin is not a TTY) |
+| `git ca auth login <account>` | Same prompt behavior, then store credentials for the named account |
 | `git ca auth login --provider codex [account]` | Log in via ChatGPT OAuth (PKCE) for a Codex account |
 | `git ca auth set-token <token>` | Store a GitHub token manually as the default active account (Copilot only) |
 | `git ca auth set-token --account <account> <token>` | Store a GitHub token manually for a named Copilot account |

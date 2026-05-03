@@ -60,9 +60,11 @@ pub enum AuthAction {
     /// Log in via the selected provider's OAuth flow.
     Login {
         /// Auth backend: `copilot` (GitHub device flow) or `codex` (ChatGPT
-        /// OAuth via loopback). Defaults to `copilot`.
-        #[arg(long, value_enum, default_value_t = Provider::Copilot)]
-        provider: Provider,
+        /// OAuth via loopback). When omitted on an interactive terminal,
+        /// `auth login` prompts for a choice; when stdin is not a TTY it
+        /// defaults to `copilot`.
+        #[arg(long, value_enum)]
+        provider: Option<Provider>,
         account: Option<String>,
     },
     /// Store a GitHub token manually instead of using device flow.
@@ -165,8 +167,23 @@ mod tests {
         assert!(matches!(
             cli.command,
             Some(Command::Auth {
-                action: AuthAction::Login { provider: Provider::Copilot, account }
+                action: AuthAction::Login { provider: None, account }
             }) if account.as_deref() == Some("work")
+        ));
+    }
+
+    #[test]
+    fn parses_auth_login_without_provider_or_account() {
+        let cli = Cli::try_parse_from(["git-ca", "auth", "login"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Auth {
+                action: AuthAction::Login {
+                    provider: None,
+                    account: None,
+                }
+            })
         ));
     }
 
@@ -178,7 +195,7 @@ mod tests {
             cli.command,
             Some(Command::Auth {
                 action: AuthAction::Login {
-                    provider: Provider::Codex,
+                    provider: Some(Provider::Codex),
                     account: None,
                 }
             })
@@ -195,7 +212,7 @@ mod tests {
             cli.command,
             Some(Command::Auth {
                 action: AuthAction::Login {
-                    provider: Provider::Codex,
+                    provider: Some(Provider::Codex),
                     account,
                 }
             }) if account.as_deref() == Some("personal")
