@@ -1,4 +1,14 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+
+/// Authentication backend selectable on `auth login`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+pub enum Provider {
+    /// GitHub Copilot via device-flow OAuth (default).
+    #[default]
+    Copilot,
+    /// OpenAI Codex via ChatGPT OAuth (PKCE, loopback callback).
+    Codex,
+}
 
 #[derive(Debug, Parser)]
 #[command(
@@ -47,8 +57,16 @@ pub enum Command {
 
 #[derive(Debug, Subcommand)]
 pub enum AuthAction {
-    /// Log in via GitHub device flow.
-    Login { account: Option<String> },
+    /// Log in via the selected provider's OAuth flow.
+    Login {
+        /// Auth backend: `copilot` (GitHub device flow) or `codex` (ChatGPT
+        /// OAuth via loopback). When omitted on an interactive terminal,
+        /// `auth login` prompts for a choice; when stdin is not a TTY it
+        /// defaults to `copilot`.
+        #[arg(long, value_enum)]
+        provider: Option<Provider>,
+        account: Option<String>,
+    },
     /// Store a GitHub token manually instead of using device flow.
     SetToken {
         /// Account name to store the token under.
@@ -149,8 +167,55 @@ mod tests {
         assert!(matches!(
             cli.command,
             Some(Command::Auth {
-                action: AuthAction::Login { account }
+                action: AuthAction::Login { provider: None, account }
             }) if account.as_deref() == Some("work")
+        ));
+    }
+
+    #[test]
+    fn parses_auth_login_without_provider_or_account() {
+        let cli = Cli::try_parse_from(["git-ca", "auth", "login"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Auth {
+                action: AuthAction::Login {
+                    provider: None,
+                    account: None,
+                }
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_auth_login_codex_provider() {
+        let cli = Cli::try_parse_from(["git-ca", "auth", "login", "--provider", "codex"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Auth {
+                action: AuthAction::Login {
+                    provider: Some(Provider::Codex),
+                    account: None,
+                }
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_auth_login_codex_provider_with_account() {
+        let cli =
+            Cli::try_parse_from(["git-ca", "auth", "login", "--provider", "codex", "personal"])
+                .unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Auth {
+                action: AuthAction::Login {
+                    provider: Some(Provider::Codex),
+                    account,
+                }
+            }) if account.as_deref() == Some("personal")
         ));
     }
 

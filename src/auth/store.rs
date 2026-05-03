@@ -17,13 +17,86 @@ pub struct AuthFile {
     pub accounts: BTreeMap<String, AccountAuth>,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct AccountAuth {
     pub name: String,
+    pub credential: Credential,
+}
+
+/// Provider-specific credentials. Tagged on disk with `"provider": "copilot"`
+/// or `"provider": "codex"` so the variant is unambiguous regardless of which
+/// fields happen to be present.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "provider", rename_all = "lowercase")]
+pub enum Credential {
+    Copilot {
+        github_token: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        copilot_cache: Option<CopilotCache>,
+    },
+    Codex {
+        tokens: ChatGptTokens,
+        /// Unix epoch seconds of the most recent successful refresh. Lets us
+        /// skip refresh when the token was rotated very recently.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        last_refresh: Option<i64>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatGptTokens {
+    pub access_token: String,
+    pub refresh_token: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub github_token: Option<String>,
+    pub id_token: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub copilot: Option<CopilotCache>,
+    pub account_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CopilotCache {
+    pub token: String,
+    /// Unix epoch seconds.
+    pub expires_at: i64,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawAccountAuth {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    credential: Option<Credential>,
+    /// Legacy: GitHub token stored directly on the account record.
+    #[serde(default)]
+    github_token: Option<String>,
+    /// Legacy: Copilot cache stored directly on the account record.
+    #[serde(default)]
+    copilot: Option<CopilotCache>,
+}
+
+impl<'de> Deserialize<'de> for AccountAuth {
+    fn deserialize<D>(d: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawAccountAuth::deserialize(d)?;
+        let credential = match raw.credential {
+            Some(c) => c,
+            None => match raw.github_token {
+                Some(token) => Credential::Copilot {
+                    github_token: token,
+                    copilot_cache: raw.copilot,
+                },
+                None => {
+                    return Err(serde::de::Error::custom("account is missing credential"));
+                }
+            },
+        };
+        Ok(AccountAuth {
+            name: raw.name,
+            credential,
+        })
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -32,6 +105,8 @@ struct RawAuthFile {
     active_account: Option<String>,
     #[serde(default)]
     accounts: BTreeMap<String, AccountAuth>,
+    /// Legacy single-account shape: token + cache at the top level, no
+    /// `accounts` map.
     #[serde(default)]
     github_token: Option<String>,
     #[serde(default)]
@@ -56,15 +131,19 @@ impl From<RawAuthFile> for AuthFile {
                 account.name = name.clone();
             }
         }
-        if accounts.is_empty() && (raw.github_token.is_some() || raw.copilot.is_some()) {
-            accounts.insert(
-                DEFAULT_ACCOUNT.to_string(),
-                AccountAuth {
-                    name: DEFAULT_ACCOUNT.to_string(),
-                    github_token: raw.github_token,
-                    copilot: raw.copilot,
-                },
-            );
+        if accounts.is_empty() {
+            if let Some(token) = raw.github_token {
+                accounts.insert(
+                    DEFAULT_ACCOUNT.to_string(),
+                    AccountAuth {
+                        name: DEFAULT_ACCOUNT.to_string(),
+                        credential: Credential::Copilot {
+                            github_token: token,
+                            copilot_cache: raw.copilot,
+                        },
+                    },
+                );
+            }
         }
         let active_account = raw
             .active_account
@@ -74,13 +153,6 @@ impl From<RawAuthFile> for AuthFile {
             accounts,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CopilotCache {
-    pub token: String,
-    /// Unix epoch seconds.
-    pub expires_at: i64,
 }
 
 impl AuthFile {
@@ -113,21 +185,36 @@ impl AuthFile {
         self.accounts.get_mut(&name)
     }
 
-    pub fn account_names(&self) -> impl Iterator<Item = &str> {
-        self.accounts.keys().map(String::as_str)
+    /// Store a GitHub token for a Copilot account, replacing any prior
+    /// credential so `set-token` cannot leave a stale Codex/Copilot mix on
+    /// disk.
+    pub fn set_copilot_github_token(&mut self, name: &str, token: String) {
+        self.accounts.insert(
+            name.to_string(),
+            AccountAuth {
+                name: name.to_string(),
+                credential: Credential::Copilot {
+                    github_token: token,
+                    copilot_cache: None,
+                },
+            },
+        );
+        self.active_account = Some(name.to_string());
     }
 
-    pub fn set_github_token(&mut self, name: &str, token: String) {
-        let account = self
-            .accounts
-            .entry(name.to_string())
-            .or_insert_with(|| AccountAuth {
+    /// Store ChatGPT OAuth tokens for a Codex account, replacing any prior
+    /// credential.
+    pub fn set_codex_tokens(&mut self, name: &str, tokens: ChatGptTokens) {
+        self.accounts.insert(
+            name.to_string(),
+            AccountAuth {
                 name: name.to_string(),
-                github_token: None,
-                copilot: None,
-            });
-        account.github_token = Some(token);
-        account.copilot = None;
+                credential: Credential::Codex {
+                    tokens,
+                    last_refresh: None,
+                },
+            },
+        );
         self.active_account = Some(name.to_string());
     }
 
@@ -147,6 +234,39 @@ impl AuthFile {
     }
 }
 
+impl AccountAuth {
+    pub fn provider_label(&self) -> &'static str {
+        match &self.credential {
+            Credential::Copilot { .. } => "copilot",
+            Credential::Codex { .. } => "codex",
+        }
+    }
+
+    pub fn github_token(&self) -> Option<&str> {
+        match &self.credential {
+            Credential::Copilot { github_token, .. } => Some(github_token.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn copilot_cache(&self) -> Option<&CopilotCache> {
+        match &self.credential {
+            Credential::Copilot { copilot_cache, .. } => copilot_cache.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn set_copilot_cache(&mut self, cache: CopilotCache) -> Result<()> {
+        match &mut self.credential {
+            Credential::Copilot { copilot_cache, .. } => {
+                *copilot_cache = Some(cache);
+                Ok(())
+            }
+            Credential::Codex { .. } => Err(Error::NotAuthenticated),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,26 +282,27 @@ mod tests {
                 "default".into(),
                 AccountAuth {
                     name: "default".into(),
-                    github_token: Some("gho_xxx".into()),
-                    copilot: Some(CopilotCache {
-                        token: "cop_xxx".into(),
-                        expires_at: 1_700_000_000,
-                    }),
+                    credential: Credential::Copilot {
+                        github_token: "gho_xxx".into(),
+                        copilot_cache: Some(CopilotCache {
+                            token: "cop_xxx".into(),
+                            expires_at: 1_700_000_000,
+                        }),
+                    },
                 },
             )]),
         };
         config::write_json_0600(&tmp, &file).unwrap();
         let loaded: AuthFile = config::read_json_or_default(&tmp).unwrap();
         assert_eq!(
-            loaded.active_account().unwrap().github_token.as_deref(),
+            loaded.active_account().unwrap().github_token(),
             Some("gho_xxx")
         );
         assert_eq!(
             loaded
                 .active_account()
                 .unwrap()
-                .copilot
-                .as_ref()
+                .copilot_cache()
                 .unwrap()
                 .token,
             "cop_xxx"
@@ -193,17 +314,17 @@ mod tests {
     fn stores_multiple_named_accounts() {
         let mut file = AuthFile::default();
 
-        file.set_github_token("work", "gho_work".into());
-        file.set_github_token("personal", "gho_personal".into());
+        file.set_copilot_github_token("work", "gho_work".into());
+        file.set_copilot_github_token("personal", "gho_personal".into());
         file.set_active_account("personal".into()).unwrap();
 
         assert_eq!(file.active_account().unwrap().name, "personal");
         assert_eq!(
-            file.active_account().unwrap().github_token.as_deref(),
+            file.active_account().unwrap().github_token(),
             Some("gho_personal")
         );
         assert_eq!(
-            file.accounts.get("work").unwrap().github_token.as_deref(),
+            file.accounts.get("work").unwrap().github_token(),
             Some("gho_work")
         );
     }
@@ -216,18 +337,141 @@ mod tests {
 
         assert_eq!(loaded.active_account().unwrap().name, "default");
         assert_eq!(
-            loaded.active_account().unwrap().github_token.as_deref(),
+            loaded.active_account().unwrap().github_token(),
             Some("gho_legacy")
         );
         assert_eq!(
             loaded
                 .active_account()
                 .unwrap()
-                .copilot
-                .as_ref()
+                .copilot_cache()
                 .unwrap()
                 .token,
             "cop_legacy"
         );
+    }
+
+    #[test]
+    fn legacy_account_record_without_provider_tag_loads_as_copilot() {
+        let json = r#"{
+            "active_account": "default",
+            "accounts": {
+                "default": {
+                    "name": "default",
+                    "github_token": "gho_legacy",
+                    "copilot": { "token": "cop_legacy", "expires_at": 1700000000 }
+                }
+            }
+        }"#;
+
+        let loaded: AuthFile = serde_json::from_str(json).unwrap();
+
+        let active = loaded.active_account().unwrap();
+        assert!(matches!(active.credential, Credential::Copilot { .. }));
+        assert_eq!(active.github_token(), Some("gho_legacy"));
+    }
+
+    #[test]
+    fn codex_account_round_trips_with_provider_tag() {
+        let codex_tokens = ChatGptTokens {
+            access_token: "at_xxx".into(),
+            refresh_token: "rt_xxx".into(),
+            id_token: Some("id_xxx".into()),
+            account_id: Some("acct_123".into()),
+        };
+        let mut accounts = BTreeMap::new();
+        accounts.insert(
+            "personal".into(),
+            AccountAuth {
+                name: "personal".into(),
+                credential: Credential::Codex {
+                    tokens: codex_tokens,
+                    last_refresh: None,
+                },
+            },
+        );
+        let file = AuthFile {
+            active_account: Some("personal".into()),
+            accounts,
+        };
+
+        let serialized = serde_json::to_string(&file).unwrap();
+        assert!(
+            serialized.contains(r#""provider":"codex""#),
+            "expected provider tag, got {serialized}"
+        );
+
+        let loaded: AuthFile = serde_json::from_str(&serialized).unwrap();
+        let active = loaded.active_account().unwrap();
+        assert_eq!(active.github_token(), None);
+        match &active.credential {
+            Credential::Codex {
+                tokens,
+                last_refresh,
+            } => {
+                assert_eq!(tokens.access_token, "at_xxx");
+                assert_eq!(tokens.refresh_token, "rt_xxx");
+                assert_eq!(tokens.account_id.as_deref(), Some("acct_123"));
+                assert!(last_refresh.is_none());
+            }
+            other => panic!("expected Codex credential, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mixed_provider_accounts_coexist() {
+        let mut file = AuthFile::default();
+        file.set_copilot_github_token("work", "gho_work".into());
+        file.accounts.insert(
+            "personal".into(),
+            AccountAuth {
+                name: "personal".into(),
+                credential: Credential::Codex {
+                    tokens: ChatGptTokens {
+                        access_token: "at_xxx".into(),
+                        refresh_token: "rt_xxx".into(),
+                        id_token: None,
+                        account_id: None,
+                    },
+                    last_refresh: None,
+                },
+            },
+        );
+
+        let serialized = serde_json::to_string(&file).unwrap();
+        let loaded: AuthFile = serde_json::from_str(&serialized).unwrap();
+
+        assert!(matches!(
+            loaded.accounts.get("work").unwrap().credential,
+            Credential::Copilot { .. }
+        ));
+        assert!(matches!(
+            loaded.accounts.get("personal").unwrap().credential,
+            Credential::Codex { .. }
+        ));
+    }
+
+    #[test]
+    fn set_copilot_cache_rejects_codex_account() {
+        let mut account = AccountAuth {
+            name: "personal".into(),
+            credential: Credential::Codex {
+                tokens: ChatGptTokens {
+                    access_token: "at".into(),
+                    refresh_token: "rt".into(),
+                    id_token: None,
+                    account_id: None,
+                },
+                last_refresh: None,
+            },
+        };
+
+        let err = account
+            .set_copilot_cache(CopilotCache {
+                token: "x".into(),
+                expires_at: 0,
+            })
+            .unwrap_err();
+        assert!(matches!(err, Error::NotAuthenticated));
     }
 }

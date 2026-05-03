@@ -19,6 +19,18 @@ pub enum Error {
     #[error("Copilot API {status}: {body}")]
     CopilotServer { status: u16, body: String },
 
+    #[error("Codex login: {0}")]
+    CodexLogin(String),
+
+    #[error("Codex token rejected — run `git ca auth login --provider codex`")]
+    CodexAuth,
+
+    #[error("Codex rate limited — retry in {retry_after}s")]
+    CodexRateLimited { retry_after: u64 },
+
+    #[error("Codex API {status}: {body}")]
+    CodexServer { status: u16, body: String },
+
     #[error("LLM returned an empty message")]
     EmptyModelResponse,
 
@@ -48,9 +60,15 @@ impl Error {
     /// Exit code mapped to error variant. See plan for the table.
     pub fn exit_code(&self) -> i32 {
         match self {
-            Error::NotAuthenticated | Error::DeviceFlow(_) | Error::CopilotAuth => 2,
+            Error::NotAuthenticated
+            | Error::DeviceFlow(_)
+            | Error::CopilotAuth
+            | Error::CodexLogin(_)
+            | Error::CodexAuth => 2,
             Error::CopilotRateLimited { .. }
             | Error::CopilotServer { .. }
+            | Error::CodexRateLimited { .. }
+            | Error::CodexServer { .. }
             | Error::Network(_)
             | Error::EmptyModelResponse => 3,
             Error::NoStagedChanges | Error::NotGitRepository => 1,

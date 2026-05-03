@@ -1,4 +1,29 @@
-use crate::copilot::ChatMessage;
+use serde::Serialize;
+
+/// Provider-agnostic chat message. Both the Copilot client (chat-completions)
+/// and the Codex client (Responses API) accept the same `{role, content}`
+/// pair — Codex internally lifts the system role into the top-level
+/// `instructions` field.
+#[derive(Debug, Clone, Serialize)]
+pub struct ChatMessage {
+    pub role: &'static str,
+    pub content: String,
+}
+
+impl ChatMessage {
+    pub fn system(content: impl Into<String>) -> Self {
+        Self {
+            role: "system",
+            content: content.into(),
+        }
+    }
+    pub fn user(content: impl Into<String>) -> Self {
+        Self {
+            role: "user",
+            content: content.into(),
+        }
+    }
+}
 
 /// Anything past this gets truncated with a marker. 32k chars ≈ 8k tokens,
 /// which is well under every Copilot chat model's context window while

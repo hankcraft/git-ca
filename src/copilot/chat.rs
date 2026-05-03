@@ -1,28 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::client::{map_error, Client};
+use crate::commit_msg::prompt::ChatMessage;
 use crate::error::{Error, Result};
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ChatMessage {
-    pub role: &'static str,
-    pub content: String,
-}
-
-impl ChatMessage {
-    pub fn system(content: impl Into<String>) -> Self {
-        Self {
-            role: "system",
-            content: content.into(),
-        }
-    }
-    pub fn user(content: impl Into<String>) -> Self {
-        Self {
-            role: "user",
-            content: content.into(),
-        }
-    }
-}
 
 #[derive(Debug, Serialize)]
 struct ChatRequest<'a> {
@@ -83,6 +63,7 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commit_msg::prompt::ChatMessage;
     use crate::copilot::client::Client;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
