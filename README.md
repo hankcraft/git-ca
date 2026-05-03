@@ -1,6 +1,6 @@
 # git-ca
 
-`git-ca` is a Git subcommand that drafts commit messages for staged changes using GitHub Copilot. It reads `git diff --cached`, asks Copilot for a Conventional Commits message, opens the result in Git's normal commit editor, and then lets `git commit` finish the commit.
+`git-ca` is a Git subcommand that drafts commit messages for staged changes using either GitHub Copilot or the OpenAI Codex (ChatGPT) backend. It reads `git diff --cached`, asks the configured backend for a Conventional Commits message, opens the result in Git's normal commit editor, and then lets `git commit` finish the commit.
 
 ## Quick Start
 
@@ -9,7 +9,7 @@ Prerequisites:
 - Rust toolchain with Cargo
 - Git
 - Lefthook for Git hooks
-- A GitHub account with Copilot access
+- One of: a GitHub account with Copilot access, **or** a ChatGPT account (Plus/Pro/Team) for the Codex backend
 
 Install from this checkout:
 
@@ -41,7 +41,7 @@ bunx @hankcraft/git-ca --help
 The man page install lets Git's own help path resolve `git ca --help`. For the
 clap-generated command help, `git ca -h` and `git-ca --help` work directly.
 
-Authenticate with GitHub Copilot:
+Authenticate with GitHub Copilot (default backend):
 
 ```sh
 git ca auth login
@@ -49,7 +49,17 @@ git ca auth login work
 git ca auth use work
 ```
 
-Or store a GitHub token manually:
+Or authenticate with the Codex (ChatGPT) backend via PKCE OAuth:
+
+```sh
+git ca auth login --provider codex
+git ca auth login --provider codex personal
+git ca auth use personal
+```
+
+The Codex flow opens your browser, completes the same login `codex` itself uses, and stores ChatGPT tokens locally. It needs to bind a loopback callback on `127.0.0.1:1455` (fallback `:1457`).
+
+Or store a GitHub token manually for Copilot (Codex is OAuth-only):
 
 ```sh
 git ca auth set-token <github-token>
@@ -83,19 +93,20 @@ git ca --no-verify
 ## Key Features
 
 - Drafts commit messages from the staged diff only.
-- Prompts Copilot to produce Conventional Commits output.
+- Two interchangeable backends: GitHub Copilot or OpenAI Codex (ChatGPT).
+- Prompts the active backend to produce Conventional Commits output.
 - Opens the generated message in the normal Git commit editor before committing.
 - Can commit the generated message directly with `--yes` / `-y` / `--auto-accept` or persisted config.
 - Supports per-command model override with `--model`.
 - Supports a persisted default model via `git ca config set-model`.
 - Supports persisted auto-accept via `git ca config set-auto-accept`.
-- Lists chat models available to the authenticated Copilot account.
-- Uses GitHub device flow for login.
-- Can store a GitHub token manually for environments where device flow is not practical.
-- Supports multiple named GitHub accounts with an active-account selector.
+- Lists chat models available to the authenticated Copilot account; for Codex, prints the known model slugs.
+- Copilot login uses GitHub device flow; Codex login uses ChatGPT OAuth (PKCE) with a localhost callback.
+- Can store a GitHub token manually for Copilot in environments where device flow is not practical.
+- Supports multiple named accounts (mix of Copilot and Codex) with an active-account selector.
 - Stores local auth/config files under `$XDG_CONFIG_HOME/git-ca` or `~/.config/git-ca` with restrictive Unix permissions.
-- Caches Copilot API tokens and refreshes them when expired or rejected.
-- Retries transient Copilot/network failures with short backoff.
+- Caches Copilot API tokens and refreshes them when expired or rejected; refreshes ChatGPT access tokens via the rotated refresh token on 401.
+- Retries transient backend/network failures with short backoff.
 - Applies HTTP connect and request timeouts so stalled endpoints do not hang the CLI indefinitely.
 
 ## Commands
@@ -106,15 +117,16 @@ git ca --no-verify
 | `git ca --model <id>`, `git ca -m <id>` | Use a specific Copilot model for this commit |
 | `git ca --yes`, `git ca -y`, `git ca --auto-accept` | Commit the generated message without opening the editor |
 | `git ca --no-verify` | Pass `--no-verify` through to `git commit` |
-| `git ca auth login` | Log in with GitHub device flow |
-| `git ca auth login <account>` | Log in and store credentials for a named GitHub account |
-| `git ca auth set-token <token>` | Store a GitHub token manually as the default active account |
-| `git ca auth set-token --account <account> <token>` | Store a GitHub token manually for a named account |
-| `git ca auth use <account>` | Select the named account for Copilot-backed commands |
+| `git ca auth login` | Log in with the default backend (Copilot device flow) |
+| `git ca auth login <account>` | Log in and store credentials for a named Copilot account |
+| `git ca auth login --provider codex [account]` | Log in via ChatGPT OAuth (PKCE) for a Codex account |
+| `git ca auth set-token <token>` | Store a GitHub token manually as the default active account (Copilot only) |
+| `git ca auth set-token --account <account> <token>` | Store a GitHub token manually for a named Copilot account |
+| `git ca auth use <account>` | Select the named account; the active account decides the backend |
 | `git ca auth logout` | Delete locally stored tokens |
 | `git ca auth logout <account>` | Delete locally stored tokens for one named account |
-| `git ca auth status` | Show local auth state and cached Copilot token TTL |
-| `git ca models` | List available Copilot chat models |
+| `git ca auth status` | Show local auth state, active account's provider, and per-provider token state |
+| `git ca models` | List available models for the active account's backend |
 | `git ca config list` | Print all persisted config values |
 | `git ca config set-model <id>` | Persist the default model |
 | `git ca config get-model` | Print the persisted default model |
@@ -141,10 +153,15 @@ src/commit_msg/
   Copilot prompt construction, diff truncation, and generated-message cleanup
 
 src/auth/
-  GitHub device flow, local auth file storage, Copilot token exchange/refresh
+  GitHub device flow, ChatGPT OAuth (PKCE + loopback), local auth file
+  storage, Copilot/Codex token exchange/refresh
 
 src/copilot/
   Copilot HTTP client, chat completion calls, model listing, retry/auth wrapper
+
+src/codex/
+  Codex HTTP client (chatgpt.com/backend-api/codex), Responses-API request
+  builder, SSE event parser, retry/auth wrapper
 
 src/config/
   config/auth paths, JSON persistence, restrictive file/directory permissions
@@ -156,13 +173,18 @@ src/error.rs
 Runtime flow for `git ca`:
 
 1. Read the staged diff with `git diff --cached --no-color -U3`.
-2. Load the persisted default model, unless `--model` was passed.
-3. Load or refresh the Copilot API token from the stored GitHub token.
-4. Send a chat completion request with the Conventional Commits prompt.
-5. Strip an accidental outer code fence from the model response.
-6. Write `.git/COMMIT_EDITMSG`.
-7. Run `git commit -e -F .git/COMMIT_EDITMSG`, optionally with `--no-verify`.
-8. If `--yes` / `-y` / `--auto-accept` or `config.auto_accept` is enabled, run `git commit -F .git/COMMIT_EDITMSG` instead so Git commits the generated message directly.
+2. Resolve the active account's backend (Copilot or Codex).
+3. Load the persisted default model, unless `--model` was passed; fall back to a backend-specific default (`gpt-4o` for Copilot, `gpt-5` for Codex).
+4. For Copilot: refresh the Copilot API token from the stored GitHub token. For Codex: use the cached ChatGPT access token, refreshing via `/oauth/token` on 401.
+5. Send the chat request with the Conventional Commits prompt — chat-completions for Copilot, Responses-API streamed over SSE for Codex.
+6. Strip an accidental outer code fence from the model response.
+7. Write `.git/COMMIT_EDITMSG`.
+8. Run `git commit -e -F .git/COMMIT_EDITMSG`, optionally with `--no-verify`.
+9. If `--yes` / `-y` / `--auto-accept` or `config.auto_accept` is enabled, run `git commit -F .git/COMMIT_EDITMSG` instead so Git commits the generated message directly.
+
+### Codex backend caveat
+
+The Codex backend talks to `https://chatgpt.com/backend-api/codex/responses`, which is the same undocumented endpoint OpenAI's `codex` CLI uses. `git-ca` mimics codex's `originator`/header values to avoid being singled out if OpenAI ever tightens client verification — same posture this project already takes for Copilot, where the request mimics the VS Code Copilot Chat extension. The endpoint can change without notice; if Codex chats start failing with `Codex API …`, expect a follow-up release that tracks the new wire format.
 
 ## Copilot Free and Model Multipliers
 
