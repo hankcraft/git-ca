@@ -22,6 +22,15 @@ pub enum Error {
     #[error("Codex login: {0}")]
     CodexLogin(String),
 
+    #[error("Codex token rejected — run `git ca auth login --provider codex`")]
+    CodexAuth,
+
+    #[error("Codex rate limited — retry in {retry_after}s")]
+    CodexRateLimited { retry_after: u64 },
+
+    #[error("Codex API {status}: {body}")]
+    CodexServer { status: u16, body: String },
+
     #[error("LLM returned an empty message")]
     EmptyModelResponse,
 
@@ -54,9 +63,12 @@ impl Error {
             Error::NotAuthenticated
             | Error::DeviceFlow(_)
             | Error::CopilotAuth
-            | Error::CodexLogin(_) => 2,
+            | Error::CodexLogin(_)
+            | Error::CodexAuth => 2,
             Error::CopilotRateLimited { .. }
             | Error::CopilotServer { .. }
+            | Error::CodexRateLimited { .. }
+            | Error::CodexServer { .. }
             | Error::Network(_)
             | Error::EmptyModelResponse => 3,
             Error::NoStagedChanges | Error::NotGitRepository => 1,

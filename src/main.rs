@@ -1,5 +1,6 @@
 mod auth;
 mod cli;
+mod codex;
 mod commit_msg;
 mod config;
 mod copilot;
@@ -50,20 +51,62 @@ async fn commit(model_override: Option<String>, no_verify: bool, yes: bool) -> R
     let http = http_client()?;
     let cfg = config::Config::load()?;
     let auto_accept = yes || cfg.auto_accept;
+
+    let provider = active_provider()?;
     let model = model_override
         .or_else(|| cfg.default_model.clone())
-        .unwrap_or_else(|| commit_msg::FALLBACK_MODEL.to_string());
-    eprintln!("git-ca: drafting message with {model}…");
-    let draft = copilot::call_authed(&http, |client| {
-        let model = model.clone();
-        let diff = diff.clone();
-        async move { commit_msg::generate(&client, &model, &diff).await }
-    })
-    .await?;
+        .unwrap_or_else(|| match provider {
+            Provider::Copilot => commit_msg::FALLBACK_MODEL.to_string(),
+            Provider::Codex => codex::FALLBACK_MODEL.to_string(),
+        });
+    eprintln!(
+        "git-ca: drafting message with {model} ({})…",
+        provider_label(provider)
+    );
+
+    let messages = commit_msg::prompt::build(&diff);
+    let raw = match provider {
+        Provider::Copilot => {
+            copilot::call_authed(&http, |client| {
+                let model = model.clone();
+                let messages = messages.clone();
+                async move { client.chat(&model, &messages).await }
+            })
+            .await?
+        }
+        Provider::Codex => {
+            codex::call_authed(&http, |client| {
+                let model = model.clone();
+                let messages = messages.clone();
+                async move { client.chat(&model, &messages).await }
+            })
+            .await?
+        }
+    };
+    let draft = commit_msg::strip_code_fences(&raw);
     if auto_accept {
         git::commit::commit_generated(&draft, no_verify)
     } else {
         git::commit::commit_with_editor(&draft, no_verify)
+    }
+}
+
+/// Resolve the active account's provider from the on-disk auth file. Errors
+/// when no account exists so the user is told to log in instead of getting a
+/// silent default.
+fn active_provider() -> Result<Provider> {
+    let file = auth::AuthFile::load()?;
+    let active = file.active_account().ok_or(Error::NotAuthenticated)?;
+    Ok(match &active.credential {
+        auth::store::Credential::Copilot { .. } => Provider::Copilot,
+        auth::store::Credential::Codex { .. } => Provider::Codex,
+    })
+}
+
+fn provider_label(p: Provider) -> &'static str {
+    match p {
+        Provider::Copilot => "copilot",
+        Provider::Codex => "codex",
     }
 }
 fn http_client() -> Result<reqwest::Client> {
@@ -198,20 +241,36 @@ async fn auth_status() -> Result<()> {
     Ok(())
 }
 async fn models() -> Result<()> {
-    let http = http_client()?;
-    let list = copilot::call_authed(
-        &http,
-        |client| async move { client.list_chat_models().await },
-    )
-    .await?;
-    if list.is_empty() {
-        println!("(no chat models available on this account)");
-        return Ok(());
-    }
-    for m in list {
-        let name = m.name.as_deref().unwrap_or("");
-        let vendor = m.vendor.as_deref().unwrap_or("");
-        println!("{:<30}  {:<14}  {}", m.id, vendor, name);
+    let provider = active_provider()?;
+    match provider {
+        Provider::Copilot => {
+            let http = http_client()?;
+            let list =
+                copilot::call_authed(
+                    &http,
+                    |client| async move { client.list_chat_models().await },
+                )
+                .await?;
+            if list.is_empty() {
+                println!("(no chat models available on this account)");
+                return Ok(());
+            }
+            for m in list {
+                let name = m.name.as_deref().unwrap_or("");
+                let vendor = m.vendor.as_deref().unwrap_or("");
+                println!("{:<30}  {:<14}  {}", m.id, vendor, name);
+            }
+        }
+        Provider::Codex => {
+            // Codex (`/responses` on `chatgpt.com/backend-api/codex`) does not
+            // expose a chat-models listing endpoint. Show the slugs known to
+            // accept Responses-API requests via ChatGPT auth so users can pick
+            // one without guessing.
+            println!("(codex backend has no models endpoint — known slugs:)");
+            for slug in ["gpt-5", "gpt-5-codex"] {
+                println!("{slug}");
+            }
+        }
     }
     Ok(())
 }
@@ -238,18 +297,25 @@ fn config_list_lines(cfg: &config::Config) -> Vec<String> {
 }
 
 async fn config_set_model(id: &str) -> Result<()> {
-    let http = http_client()?;
-    let available = copilot::call_authed(
-        &http,
-        |client| async move { client.list_chat_models().await },
-    )
-    .await?;
-    if !available.iter().any(|m| m.id == id) {
-        let ids: Vec<String> = available.into_iter().map(|m| m.id).collect();
-        return Err(Error::Config(format!(
-            "model `{id}` not available — try one of: {}",
-            ids.join(", ")
-        )));
+    // Only Copilot exposes a model-list endpoint we can validate against.
+    // For Codex we accept the id verbatim because the server returns a clear
+    // 400 when the slug is unsupported, and we'd otherwise need to maintain
+    // a hand-curated allow-list that drifts.
+    if let Ok(Provider::Copilot) = active_provider() {
+        let http = http_client()?;
+        let available =
+            copilot::call_authed(
+                &http,
+                |client| async move { client.list_chat_models().await },
+            )
+            .await?;
+        if !available.iter().any(|m| m.id == id) {
+            let ids: Vec<String> = available.into_iter().map(|m| m.id).collect();
+            return Err(Error::Config(format!(
+                "model `{id}` not available — try one of: {}",
+                ids.join(", ")
+            )));
+        }
     }
     let mut cfg = config::Config::load()?;
     cfg.default_model = Some(id.to_string());
