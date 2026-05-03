@@ -6,9 +6,11 @@ mod config;
 mod copilot;
 mod error;
 mod git;
+mod pr_msg;
 
 use clap::Parser;
-use cli::{AuthAction, Cli, Command, ConfigAction, Provider};
+use cli::{AuthAction, Cli, Command, ConfigAction, PrSource, Provider};
+use commit_msg::prompt::ChatMessage;
 use error::{Error, Result};
 
 #[tokio::main]
@@ -27,6 +29,7 @@ async fn main() {
 async fn run(cli: Cli) -> Result<()> {
     match cli.command {
         None => commit(cli.model, cli.no_verify, cli.yes).await,
+        Some(Command::Pr { base, source }) => pull_request(cli.model, cli.yes, base, source).await,
         Some(Command::Auth { action }) => match action {
             AuthAction::Login { provider, account } => auth_login(provider, account).await,
             AuthAction::SetToken { account, token } => auth_set_token(&account, &token).await,
@@ -48,10 +51,49 @@ async fn run(cli: Cli) -> Result<()> {
 async fn commit(model_override: Option<String>, no_verify: bool, yes: bool) -> Result<()> {
     git::ensure_work_tree()?;
     let diff = git::diff::staged_diff()?;
-    let http = http_client()?;
     let cfg = config::Config::load()?;
     let auto_accept = yes || cfg.auto_accept;
 
+    let messages = commit_msg::prompt::build(&diff);
+    let raw = generate_text(model_override, messages, "drafting message").await?;
+    let draft = commit_msg::strip_code_fences(&raw);
+    if auto_accept {
+        git::commit::commit_generated(&draft, no_verify)
+    } else {
+        git::commit::commit_with_editor(&draft, no_verify)
+    }
+}
+
+async fn pull_request(
+    model_override: Option<String>,
+    yes: bool,
+    base: Option<String>,
+    source: PrSource,
+) -> Result<()> {
+    git::ensure_work_tree()?;
+    git::pr::ensure_gh_available()?;
+    let base = base.unwrap_or_else(git::pr::default_base);
+    let merge_base = git::pr::merge_base(&base)?;
+    let source_text = match source {
+        PrSource::Diff => git::pr::branch_diff(&merge_base)?,
+        PrSource::Commits => git::pr::commit_log(&merge_base)?,
+    };
+    let messages = pr_msg::prompt::build(source, &base, &source_text);
+    let raw = generate_text(model_override, messages, "drafting PR message").await?;
+    let mut draft = pr_msg::parse_json(&raw)?;
+    if !yes {
+        draft = git::pr::edit_message(&draft)?;
+    }
+    git::pr::create_pull_request(&base, &draft.title, &draft.body)
+}
+
+async fn generate_text(
+    model_override: Option<String>,
+    messages: Vec<ChatMessage>,
+    action: &str,
+) -> Result<String> {
+    let http = http_client()?;
+    let cfg = config::Config::load()?;
     let provider = active_provider()?;
     let model = model_override
         .or_else(|| cfg.default_model.clone())
@@ -60,12 +102,11 @@ async fn commit(model_override: Option<String>, no_verify: bool, yes: bool) -> R
             Provider::Codex => codex::FALLBACK_MODEL.to_string(),
         });
     eprintln!(
-        "git-ca: drafting message with {model} ({})…",
+        "git-ca: {action} with {model} ({})…",
         provider_label(provider)
     );
 
-    let messages = commit_msg::prompt::build(&diff);
-    let raw = match provider {
+    Ok(match provider {
         Provider::Copilot => {
             copilot::call_authed(&http, |client| {
                 let model = model.clone();
@@ -82,13 +123,7 @@ async fn commit(model_override: Option<String>, no_verify: bool, yes: bool) -> R
             })
             .await?
         }
-    };
-    let draft = commit_msg::strip_code_fences(&raw);
-    if auto_accept {
-        git::commit::commit_generated(&draft, no_verify)
-    } else {
-        git::commit::commit_with_editor(&draft, no_verify)
-    }
+    })
 }
 
 /// Resolve the active account's provider from the on-disk auth file. Errors

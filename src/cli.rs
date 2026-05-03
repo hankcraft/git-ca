@@ -26,7 +26,7 @@ pub struct Cli {
     pub no_verify: bool,
 
     /// Copilot model id to use for drafting (overrides the persisted default).
-    #[arg(short = 'm', long = "model")]
+    #[arg(short = 'm', long = "model", global = true)]
     pub model: Option<String>,
 
     /// Commit the generated message without opening the editor.
@@ -41,6 +41,15 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Generate a pull request title/body and create the PR with gh.
+    Pr {
+        /// Base branch to compare against.
+        #[arg(long)]
+        base: Option<String>,
+        /// Change source to summarize.
+        #[arg(long, value_enum, default_value_t = PrSource::Diff)]
+        source: PrSource,
+    },
     /// Manage GitHub Copilot authentication.
     Auth {
         #[command(subcommand)]
@@ -53,6 +62,15 @@ pub enum Command {
         #[command(subcommand)]
         action: ConfigAction,
     },
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+pub enum PrSource {
+    /// Summarize the branch diff against the base branch.
+    #[default]
+    Diff,
+    /// Summarize commit messages between the base branch and HEAD.
+    Commits,
 }
 
 #[derive(Debug, Subcommand)]
@@ -158,6 +176,40 @@ mod tests {
                 action: ConfigAction::List
             })
         ));
+    }
+
+    #[test]
+    fn parses_pr_defaults_to_diff_source() {
+        let cli = Cli::try_parse_from(["git-ca", "pr"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Pr {
+                base: None,
+                source: PrSource::Diff,
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_pr_base_and_commit_source() {
+        let cli = Cli::try_parse_from(["git-ca", "pr", "--base", "develop", "--source", "commits"])
+            .unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Pr {
+                base,
+                source: PrSource::Commits,
+            }) if base.as_deref() == Some("develop")
+        ));
+    }
+
+    #[test]
+    fn parses_global_model_after_pr_subcommand() {
+        let cli = Cli::try_parse_from(["git-ca", "pr", "--model", "gpt-4o"]).unwrap();
+
+        assert_eq!(cli.model.as_deref(), Some("gpt-4o"));
     }
 
     #[test]
