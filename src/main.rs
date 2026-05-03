@@ -263,11 +263,13 @@ async fn models() -> Result<()> {
         }
         Provider::Codex => {
             // Codex (`/responses` on `chatgpt.com/backend-api/codex`) does not
-            // expose a chat-models listing endpoint. Show the slugs known to
-            // accept Responses-API requests via ChatGPT auth so users can pick
-            // one without guessing.
-            println!("(codex backend has no models endpoint — known slugs:)");
-            for slug in ["gpt-5", "gpt-5-codex"] {
+            // expose a chat-models listing endpoint. Show the slugs that a
+            // smoke test confirmed the backend accepts via ChatGPT auth so
+            // users can pick one without guessing — note that `gpt-5` and
+            // `gpt-5-codex` are explicitly rejected with "not supported" 400s
+            // even though they're valid slugs in other contexts.
+            println!("(codex backend has no models endpoint — known accepted slugs:)");
+            for slug in ["gpt-5.5", "gpt-5.4"] {
                 println!("{slug}");
             }
         }

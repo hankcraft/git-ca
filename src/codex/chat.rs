@@ -6,10 +6,12 @@ use crate::commit_msg::prompt::ChatMessage;
 use crate::error::{Error, Result};
 
 /// Default Codex model when neither `--model` nor a persisted default is set.
-/// `gpt-5` is the consumer-ChatGPT slug codex itself uses; the server returns
-/// a clear 400 when the chosen model is unsupported, so a wrong default is
-/// recoverable via `git ca config set-model`.
-pub const FALLBACK_MODEL: &str = "gpt-5";
+/// `gpt-5.5` matches the slug codex's own `~/.codex/config.toml` writes after
+/// `codex login`, and is the slug a smoke test against the live ChatGPT
+/// backend confirmed works for accounts with Codex access. The server returns
+/// a clear 400 ("model is not supported") when the chosen slug is wrong, so a
+/// stale default is recoverable via `git ca config set-model`.
+pub const FALLBACK_MODEL: &str = "gpt-5.5";
 
 #[derive(Debug, Serialize)]
 struct ResponsesRequest<'a> {

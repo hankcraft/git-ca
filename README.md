@@ -174,7 +174,7 @@ Runtime flow for `git ca`:
 
 1. Read the staged diff with `git diff --cached --no-color -U3`.
 2. Resolve the active account's backend (Copilot or Codex).
-3. Load the persisted default model, unless `--model` was passed; fall back to a backend-specific default (`gpt-4o` for Copilot, `gpt-5` for Codex).
+3. Load the persisted default model, unless `--model` was passed; fall back to a backend-specific default (`gpt-4o` for Copilot, `gpt-5.5` for Codex).
 4. For Copilot: refresh the Copilot API token from the stored GitHub token. For Codex: use the cached ChatGPT access token, refreshing via `/oauth/token` on 401.
 5. Send the chat request with the Conventional Commits prompt — chat-completions for Copilot, Responses-API streamed over SSE for Codex.
 6. Strip an accidental outer code fence from the model response.
