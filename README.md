@@ -1,6 +1,6 @@
 # git-ca
 
-`git-ca` is a Git subcommand that drafts commit messages for staged changes using either GitHub Copilot or the OpenAI Codex (ChatGPT) backend. It reads `git diff --cached`, asks the configured backend for a Conventional Commits message, opens the result in Git's normal commit editor, and then lets `git commit` finish the commit.
+`git-ca` is a Git subcommand that drafts commit messages and pull request text using either GitHub Copilot or the OpenAI Codex (ChatGPT) backend. It reads `git diff --cached` for commits, or branch changes for PRs, asks the configured backend for a draft, opens the result in your editor by default, and then lets Git or GitHub CLI finish the action.
 
 ## Quick Start
 
@@ -76,6 +76,17 @@ git ca
 
 `git-ca` writes a draft commit message, opens your configured Git editor, and passes the edited message to `git commit`. If you save an empty message, Git aborts the commit as usual.
 
+Create a pull request:
+
+```sh
+git ca pr
+git ca pr --base develop
+git ca pr --source commits
+git ca pr --yes
+```
+
+`git ca pr` compares the current branch to the base branch, drafts a PR title and Markdown body, opens the draft in your editor, and then runs `gh pr create`. It requires the GitHub CLI (`gh`) to be installed and authenticated. By default it summarizes the branch diff; use `--source commits` to summarize commit messages instead. `--yes` skips the editor and creates the PR directly.
+
 Useful commands:
 
 ```sh
@@ -94,6 +105,7 @@ git ca --no-verify
 ## Key Features
 
 - Drafts commit messages from the staged diff only.
+- Drafts pull request title/body text from branch diff or commit log and creates the PR with `gh`.
 - Two interchangeable backends: GitHub Copilot or OpenAI Codex (ChatGPT).
 - Prompts the active backend to produce Conventional Commits output.
 - Opens the generated message in the normal Git commit editor before committing.
@@ -115,6 +127,9 @@ git ca --no-verify
 | Command | Description |
 | --- | --- |
 | `git ca` | Draft a message for staged changes and run `git commit -e -F <message>` |
+| `git ca pr` | Draft a PR title/body from current branch changes and run `gh pr create` |
+| `git ca pr --base <branch>` | Compare the current branch against a specific PR base branch |
+| `git ca pr --source commits` | Draft PR text from commit messages instead of the branch diff |
 | `git ca --model <id>`, `git ca -m <id>` | Use a specific Copilot model for this commit |
 | `git ca --yes`, `git ca -y`, `git ca --auto-accept` | Commit the generated message without opening the editor |
 | `git ca --no-verify` | Pass `--no-verify` through to `git commit` |
@@ -148,10 +163,13 @@ src/cli.rs
   clap argument and subcommand definitions
 
 src/git/
-  staged diff reading and editor-backed `git commit` execution
+  staged diff/branch PR source reading, editor-backed `git commit`, and `gh pr create` execution
 
 src/commit_msg/
   Copilot prompt construction, diff truncation, and generated-message cleanup
+
+src/pr_msg/
+  PR prompt construction, source truncation, and generated JSON parsing
 
 src/auth/
   GitHub device flow, ChatGPT OAuth (PKCE + loopback), local auth file
@@ -182,6 +200,17 @@ Runtime flow for `git ca`:
 7. Write `.git/COMMIT_EDITMSG`.
 8. Run `git commit -e -F .git/COMMIT_EDITMSG`, optionally with `--no-verify`.
 9. If `--yes` / `-y` / `--auto-accept` or `config.auto_accept` is enabled, run `git commit -F .git/COMMIT_EDITMSG` instead so Git commits the generated message directly.
+
+Runtime flow for `git ca pr`:
+
+1. Resolve the base branch from `--base`, else `origin/HEAD`, else `main`.
+2. Resolve `git merge-base <base> HEAD`.
+3. Read either `git diff --no-color -U3 <merge-base>...HEAD` or `git log --no-merges --format=%s%n%n%b <merge-base>..HEAD`.
+4. Resolve the active account's backend and model the same way `git ca` does.
+5. Ask the backend for compact JSON containing `title` and `body`.
+6. Parse and validate the generated PR text.
+7. Unless `--yes` is set, write `.git/PULL_REQUEST_EDITMSG`, open the configured Git editor, and read back the edited title/body.
+8. Write `.git/PULL_REQUEST_BODY` and run `gh pr create --base <base> --title <title> --body-file <path>`.
 
 ### Codex backend caveat
 

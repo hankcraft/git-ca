@@ -1,6 +1,6 @@
 .TH GIT-CA 1 "2026-05-03" "git-ca 0.2.0" "User Commands"
 .SH NAME
-git-ca \- draft git commit messages with GitHub Copilot or OpenAI Codex
+git-ca \- draft git commit messages and pull request text with GitHub Copilot or OpenAI Codex
 .SH SYNOPSIS
 .B git ca
 .RI [ OPTIONS ]
@@ -11,11 +11,14 @@ git-ca \- draft git commit messages with GitHub Copilot or OpenAI Codex
 .RI [ COMMAND ]
 .SH DESCRIPTION
 .B git-ca
-is a Git subcommand that drafts commit messages for staged changes using
-either GitHub Copilot or the OpenAI Codex (ChatGPT) backend. It reads the
-staged diff, asks the active backend for a Conventional Commits message,
-writes the draft to Git's commit message file, and runs
+is a Git subcommand that drafts commit messages and pull request text using
+either GitHub Copilot or the OpenAI Codex (ChatGPT) backend. For commits it
+reads the staged diff, asks the active backend for a Conventional Commits
+message, writes the draft to Git's commit message file, and runs
 .BR git-commit (1).
+For pull requests it summarizes branch changes, asks the active backend for a
+title and Markdown body, and runs
+.BR gh-pr-create (1).
 .PP
 Git handles
 .B git ca \--help
@@ -33,7 +36,8 @@ Use a specific model id for drafting. The id must be valid for the active
 account's backend. Overrides the persisted default model.
 .TP
 .BR \-y , " \--yes" , " \--auto-accept"
-Commit the generated message without opening the editor.
+Commit the generated message or create the generated pull request without
+opening the editor.
 .TP
 .BR \-h , " \--help"
 Print command help when the binary is invoked directly or through
@@ -81,6 +85,19 @@ List available models for the active account's backend. For Copilot this hits
 the live model-listing endpoint; for Codex (which has no listing endpoint)
 this prints the known accepted slugs.
 .TP
+.BI "pr [\--base " BRANCH "] [\--source " diff|commits "]"
+Draft a pull request title and Markdown body for the current branch, then run
+.BR "gh pr create" .
+When
+.BI \--base
+is omitted, the base branch is resolved from
+.BR origin/HEAD ,
+falling back to
+.BR main .
+The default source is the branch diff against the merge base; use
+.B \--source commits
+to summarize commit messages instead.
+.TP
 .B config list
 Print all persisted config values.
 .TP
@@ -108,6 +125,12 @@ Draft with a specific model:
 Commit the generated message directly:
 .B git ca \--yes
 .TP
+Draft a pull request against develop:
+.B git ca pr \--base develop
+.TP
+Create the generated pull request directly:
+.B git ca pr \--yes
+.TP
 Show clap-generated help instead of this manual page:
 .B git ca \-h
 .SH FILES
@@ -121,4 +144,5 @@ accounts hold a GitHub token plus a cached Copilot API token, Codex accounts
 hold ChatGPT access/refresh/id tokens and the linked account id.
 .SH SEE ALSO
 .BR git (1),
-.BR git-commit (1)
+.BR git-commit (1),
+.BR gh (1)
