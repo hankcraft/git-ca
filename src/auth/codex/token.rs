@@ -34,6 +34,24 @@ pub(crate) async fn refresh_with_base(
     issuer_base: &str,
     file: &mut AuthFile,
 ) -> Result<String> {
+    refresh_with_base_and_persistence(http, issuer_base, file, true).await
+}
+
+#[cfg(test)]
+async fn refresh_with_base_without_persistence(
+    http: &reqwest::Client,
+    issuer_base: &str,
+    file: &mut AuthFile,
+) -> Result<String> {
+    refresh_with_base_and_persistence(http, issuer_base, file, false).await
+}
+
+async fn refresh_with_base_and_persistence(
+    http: &reqwest::Client,
+    issuer_base: &str,
+    file: &mut AuthFile,
+    persist: bool,
+) -> Result<String> {
     let refresh_token = file
         .active_account()
         .and_then(|a| match &a.credential {
@@ -91,7 +109,9 @@ pub(crate) async fn refresh_with_base(
         }
         Credential::Copilot { .. } => return Err(Error::NotAuthenticated),
     }
-    file.save()?;
+    if persist {
+        file.save()?;
+    }
     Ok(parsed.access_token)
 }
 
@@ -153,7 +173,7 @@ mod tests {
 
         let mut file = codex_file("rt_old");
         let http = reqwest::Client::new();
-        let token = refresh_with_base(&http, &server.uri(), &mut file)
+        let token = refresh_with_base_without_persistence(&http, &server.uri(), &mut file)
             .await
             .unwrap();
         assert_eq!(token, "at_new");
