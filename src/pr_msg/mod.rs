@@ -24,8 +24,34 @@ Required JSON shape:
 
 Rules:
 - title: imperative mood, no trailing period, ≤ 72 chars
-- body: Markdown, include Summary and Testing sections
-- explain user-visible behavior and review-relevant risks
+- body: Markdown. Treat it as a mini architecture note that helps reviewers
+  answer: \"What am I reviewing, why does it matter, and where should I focus?\"
+- a PR message is different from a commit message: a commit explains one
+  change; a PR explains the whole story
+- include these sections, omitting only sections that truly do not apply:
+  ## Summary
+  ## Context
+  ## Changes
+  ## Trade-offs / Risks
+  ## Testing
+  ## Screenshots / Demo
+  ## References
+- Summary: explain what this PR changes at a high level
+- Context: explain why the PR exists and what problem it solves
+- Changes: describe key implementation points, not every file changed
+- Trade-offs / Risks: call out limitations, migration notes, review risks, and
+  behavior that old clients/users keep
+- Testing: list only verification shown by the input; if none is visible, say
+  \"Not run (not shown in input)\"
+- Screenshots / Demo: include for UI-visible changes when the input supports it
+- References: include only issues, incidents, docs, or links present in input
+- describe HOW when implementation is non-trivial, reviewers need guidance,
+  there are architectural decisions/trade-offs, the diff is large, the PR
+  touches multiple layers, or future development is affected
+- Avoid HOW when it only repeats the file diff
+- bad HOW: \"Changed `order.ts`; updated `api.ts`; added `utils.ts`\"
+- good HOW: \"Centralizes retry handling in the request layer so individual API
+  calls do not need their own retry logic\"
 - do not invent tickets, reviewers, labels, or test results not present in the input
 ";
 
@@ -70,6 +96,26 @@ Rules:
             assert!(messages[1].content.contains("Base branch: main"));
             assert!(messages[1].content.contains("Source: Commit log"));
             assert!(messages[1].content.contains("feat: add PR flow"));
+        }
+
+        #[test]
+        fn system_prompt_requests_review_story_sections() {
+            let messages = build(PrSource::Diff, "main", "diff --git a/x b/x");
+
+            let system = &messages[0].content;
+            for section in [
+                "## Summary",
+                "## Context",
+                "## Changes",
+                "## Trade-offs / Risks",
+                "## Testing",
+                "## Screenshots / Demo",
+                "## References",
+            ] {
+                assert!(system.contains(section), "missing section: {section}");
+            }
+            assert!(system.contains("mini architecture note"));
+            assert!(system.contains("Avoid HOW when it only repeats the file diff"));
         }
     }
 }
