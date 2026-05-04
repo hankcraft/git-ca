@@ -37,6 +37,9 @@ pub fn ensure_config_dir() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn set_env(key: &str, value: Option<&str>) {
         match value {
@@ -47,6 +50,7 @@ mod tests {
 
     #[test]
     fn config_dir_uses_xdg_config_home_when_set() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let old_xdg = std::env::var_os("XDG_CONFIG_HOME");
         let old_home = std::env::var_os("HOME");
         set_env("XDG_CONFIG_HOME", Some("/tmp/git-ca-xdg"));
@@ -66,6 +70,7 @@ mod tests {
 
     #[test]
     fn config_dir_falls_back_to_home_dot_config() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let old_xdg = std::env::var_os("XDG_CONFIG_HOME");
         let old_home = std::env::var_os("HOME");
         set_env("XDG_CONFIG_HOME", None);
@@ -85,6 +90,7 @@ mod tests {
 
     #[test]
     fn empty_xdg_config_home_falls_back_to_home_dot_config() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let old_xdg = std::env::var_os("XDG_CONFIG_HOME");
         let old_home = std::env::var_os("HOME");
         set_env("XDG_CONFIG_HOME", Some(""));

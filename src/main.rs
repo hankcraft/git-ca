@@ -6,9 +6,11 @@ mod config;
 mod copilot;
 mod error;
 mod git;
+mod pr_msg;
 
 use clap::Parser;
-use cli::{AuthAction, Cli, Command, ConfigAction, Provider};
+use cli::{AuthAction, Cli, Command, ConfigAction, PrSource, Provider};
+use commit_msg::prompt::ChatMessage;
 use error::{Error, Result};
 
 #[tokio::main]
@@ -27,6 +29,7 @@ async fn main() {
 async fn run(cli: Cli) -> Result<()> {
     match cli.command {
         None => commit(cli.model, cli.no_verify, cli.yes).await,
+        Some(Command::Pr { base, source }) => pull_request(cli.model, cli.yes, base, source).await,
         Some(Command::Auth { action }) => match action {
             AuthAction::Login { provider, account } => auth_login(provider, account).await,
             AuthAction::SetToken { account, token } => auth_set_token(&account, &token).await,
@@ -41,6 +44,8 @@ async fn run(cli: Cli) -> Result<()> {
             ConfigAction::GetModel => config_get_model().await,
             ConfigAction::SetAutoAccept { value } => config_set_auto_accept(value).await,
             ConfigAction::GetAutoAccept => config_get_auto_accept().await,
+            ConfigAction::SetAutoAcceptPr { value } => config_set_auto_accept_pr(value).await,
+            ConfigAction::GetAutoAcceptPr => config_get_auto_accept_pr().await,
         },
     }
 }
@@ -48,10 +53,57 @@ async fn run(cli: Cli) -> Result<()> {
 async fn commit(model_override: Option<String>, no_verify: bool, yes: bool) -> Result<()> {
     git::ensure_work_tree()?;
     let diff = git::diff::staged_diff()?;
-    let http = http_client()?;
     let cfg = config::Config::load()?;
     let auto_accept = yes || cfg.auto_accept;
 
+    let messages = commit_msg::prompt::build(&diff);
+    let raw = generate_text(model_override, messages, "drafting message").await?;
+    let draft = commit_msg::strip_code_fences(&raw);
+    if auto_accept {
+        git::commit::commit_generated(&draft, no_verify)
+    } else {
+        git::commit::commit_with_editor(&draft, no_verify)
+    }
+}
+
+async fn pull_request(
+    model_override: Option<String>,
+    yes: bool,
+    base: Option<String>,
+    source: PrSource,
+) -> Result<()> {
+    git::ensure_work_tree()?;
+    git::pr::ensure_gh_available()?;
+    let cfg = config::Config::load()?;
+    let auto_accept = pr_auto_accept(yes, &cfg);
+    let base = base
+        .map(git::pr::BaseBranch::explicit)
+        .unwrap_or_else(git::pr::default_base);
+    let merge_base = git::pr::merge_base(&base.compare_ref)?;
+    let source_text = match source {
+        PrSource::Diff => git::pr::branch_diff(&merge_base)?,
+        PrSource::Commits => git::pr::commit_log(&merge_base)?,
+    };
+    let messages = pr_msg::prompt::build(source, &base.pr_base, &source_text);
+    let raw = generate_text(model_override, messages, "drafting PR message").await?;
+    let mut draft = pr_msg::parse_json(&raw)?;
+    if !auto_accept {
+        draft = git::pr::edit_message(&draft)?;
+    }
+    git::pr::create_pull_request(&base.pr_base, &draft.title, &draft.body)
+}
+
+fn pr_auto_accept(yes: bool, cfg: &config::Config) -> bool {
+    yes || cfg.auto_accept_pr
+}
+
+async fn generate_text(
+    model_override: Option<String>,
+    messages: Vec<ChatMessage>,
+    action: &str,
+) -> Result<String> {
+    let http = http_client()?;
+    let cfg = config::Config::load()?;
     let provider = active_provider()?;
     let model = model_override
         .or_else(|| cfg.default_model.clone())
@@ -60,12 +112,11 @@ async fn commit(model_override: Option<String>, no_verify: bool, yes: bool) -> R
             Provider::Codex => codex::FALLBACK_MODEL.to_string(),
         });
     eprintln!(
-        "git-ca: drafting message with {model} ({})…",
+        "git-ca: {action} with {model} ({})…",
         provider_label(provider)
     );
 
-    let messages = commit_msg::prompt::build(&diff);
-    let raw = match provider {
+    Ok(match provider {
         Provider::Copilot => {
             copilot::call_authed(&http, |client| {
                 let model = model.clone();
@@ -82,13 +133,7 @@ async fn commit(model_override: Option<String>, no_verify: bool, yes: bool) -> R
             })
             .await?
         }
-    };
-    let draft = commit_msg::strip_code_fences(&raw);
-    if auto_accept {
-        git::commit::commit_generated(&draft, no_verify)
-    } else {
-        git::commit::commit_with_editor(&draft, no_verify)
-    }
+    })
 }
 
 /// Resolve the active account's provider from the on-disk auth file. Errors
@@ -333,6 +378,7 @@ fn config_list_lines(cfg: &config::Config) -> Vec<String> {
         )),
     }
     lines.push(format!("auto_accept: {}", cfg.auto_accept));
+    lines.push(format!("auto_accept_pr: {}", cfg.auto_accept_pr));
     lines
 }
 
@@ -387,6 +433,20 @@ async fn config_get_auto_accept() -> Result<()> {
     Ok(())
 }
 
+async fn config_set_auto_accept_pr(value: bool) -> Result<()> {
+    let mut cfg = config::Config::load()?;
+    cfg.auto_accept_pr = value;
+    cfg.save()?;
+    println!("PR auto accept set to {value}.");
+    Ok(())
+}
+
+async fn config_get_auto_accept_pr() -> Result<()> {
+    let cfg = config::Config::load()?;
+    println!("{}", cfg.auto_accept_pr);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,6 +456,7 @@ mod tests {
         let cfg = config::Config {
             default_model: None,
             auto_accept: false,
+            auto_accept_pr: false,
         };
 
         assert_eq!(
@@ -403,8 +464,29 @@ mod tests {
             vec![
                 format!("default_model: {} (fallback)", commit_msg::FALLBACK_MODEL),
                 "auto_accept: false".to_string(),
+                "auto_accept_pr: false".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn pr_auto_accept_uses_flag_or_pr_config_only() {
+        let cfg = config::Config {
+            default_model: None,
+            auto_accept: true,
+            auto_accept_pr: false,
+        };
+
+        assert!(!pr_auto_accept(false, &cfg));
+        assert!(pr_auto_accept(true, &cfg));
+
+        let cfg = config::Config {
+            default_model: None,
+            auto_accept: false,
+            auto_accept_pr: true,
+        };
+
+        assert!(pr_auto_accept(false, &cfg));
     }
 
     #[test]

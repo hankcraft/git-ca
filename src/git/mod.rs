@@ -1,5 +1,6 @@
 pub mod commit;
 pub mod diff;
+pub mod pr;
 
 use std::process::{Command, Output};
 

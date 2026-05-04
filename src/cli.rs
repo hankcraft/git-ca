@@ -26,21 +26,25 @@ pub struct Cli {
     pub no_verify: bool,
 
     /// Copilot model id to use for drafting (overrides the persisted default).
-    #[arg(short = 'm', long = "model")]
+    #[arg(short = 'm', long = "model", global = true)]
     pub model: Option<String>,
 
-    /// Commit the generated message without opening the editor.
-    #[arg(
-        short = 'y',
-        long = "yes",
-        visible_alias = "auto-accept",
-        global = true
-    )]
+    /// Accept generated text without opening the editor.
+    #[arg(short = 'y', long = "yes", global = true)]
     pub yes: bool,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Generate a pull request title/body and create the PR with gh.
+    Pr {
+        /// Base branch to compare against.
+        #[arg(long)]
+        base: Option<String>,
+        /// Change source to summarize.
+        #[arg(long, value_enum, default_value_t = PrSource::Diff)]
+        source: PrSource,
+    },
     /// Manage GitHub Copilot authentication.
     Auth {
         #[command(subcommand)]
@@ -53,6 +57,15 @@ pub enum Command {
         #[command(subcommand)]
         action: ConfigAction,
     },
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+pub enum PrSource {
+    /// Summarize the branch diff against the base branch.
+    #[default]
+    Diff,
+    /// Summarize commit messages between the base branch and HEAD.
+    Commits,
 }
 
 #[derive(Debug, Subcommand)]
@@ -94,13 +107,20 @@ pub enum ConfigAction {
     SetModel { id: String },
     /// Print the default model (if any).
     GetModel,
-    /// Set whether generated messages are committed without opening the editor.
+    /// Set whether generated commit messages are committed without opening the editor.
     SetAutoAccept {
         #[arg(action = clap::ArgAction::Set)]
         value: bool,
     },
-    /// Print whether generated messages are committed without opening the editor.
+    /// Print whether generated commit messages are committed without opening the editor.
     GetAutoAccept,
+    /// Set whether generated pull requests are created without opening the editor.
+    SetAutoAcceptPr {
+        #[arg(action = clap::ArgAction::Set)]
+        value: bool,
+    },
+    /// Print whether generated pull requests are created without opening the editor.
+    GetAutoAcceptPr,
 }
 
 #[cfg(test)]
@@ -130,10 +150,10 @@ mod tests {
     }
 
     #[test]
-    fn parses_auto_accept_alias() {
-        let cli = Cli::try_parse_from(["git-ca", "--auto-accept"]).unwrap();
+    fn rejects_auto_accept_flag_alias() {
+        let err = Cli::try_parse_from(["git-ca", "--auto-accept"]).unwrap_err();
 
-        assert!(cli.yes);
+        assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
     }
 
     #[test]
@@ -149,6 +169,30 @@ mod tests {
     }
 
     #[test]
+    fn parses_set_auto_accept_pr_value() {
+        let cli = Cli::try_parse_from(["git-ca", "config", "set-auto-accept-pr", "true"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Config {
+                action: ConfigAction::SetAutoAcceptPr { value: true }
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_get_auto_accept_pr() {
+        let cli = Cli::try_parse_from(["git-ca", "config", "get-auto-accept-pr"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Config {
+                action: ConfigAction::GetAutoAcceptPr
+            })
+        ));
+    }
+
+    #[test]
     fn parses_config_list() {
         let cli = Cli::try_parse_from(["git-ca", "config", "list"]).unwrap();
 
@@ -158,6 +202,40 @@ mod tests {
                 action: ConfigAction::List
             })
         ));
+    }
+
+    #[test]
+    fn parses_pr_defaults_to_diff_source() {
+        let cli = Cli::try_parse_from(["git-ca", "pr"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Pr {
+                base: None,
+                source: PrSource::Diff,
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_pr_base_and_commit_source() {
+        let cli = Cli::try_parse_from(["git-ca", "pr", "--base", "develop", "--source", "commits"])
+            .unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(Command::Pr {
+                base,
+                source: PrSource::Commits,
+            }) if base.as_deref() == Some("develop")
+        ));
+    }
+
+    #[test]
+    fn parses_global_model_after_pr_subcommand() {
+        let cli = Cli::try_parse_from(["git-ca", "pr", "--model", "gpt-4o"]).unwrap();
+
+        assert_eq!(cli.model.as_deref(), Some("gpt-4o"));
     }
 
     #[test]
