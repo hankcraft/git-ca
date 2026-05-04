@@ -40,13 +40,20 @@ Follow Conventional Commits strictly:
 
   <type>[optional scope]: <subject>
 
-  [optional body]
+  [optional body WHY]
+  [optional body WHAT]
+  [optional body IMPACT]
 
 Rules:
 - type ∈ {feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert}
 - subject: imperative mood, lowercase, no trailing period, ≤ 72 chars
 - leave a blank line between subject and body
-- body: wrap at ~72 cols; explain WHY, not a line-by-line summary of the diff
+- body: wrap at ~72 cols; focus on WHY, not a line-by-line summary; describe concisely
+- body WHY: explain the problem, trigger, or risk avoided by this change
+- body WHAT: for non-trivial changes, summarize the high-level approach;
+  use concise bullets when they make the approach easier to scan
+- body IMPACT: mention production-relevant side effects such as performance,
+  breaking changes, migrations, observability, or logging changes
 - omit body entirely if the subject is self-explanatory
 - do not invent requirements, tickets, or co-authors that aren't in the diff
 ";
