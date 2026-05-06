@@ -4,19 +4,37 @@
 
 ## Installation
 
-Option 1 (recommended): Install from crates.io or main stream package managers:
+**Option 1 (recommended): Install from crates.io or mainstream package managers**
 
 ```sh
 cargo install git-ca
+```
+```sh
 brew install hankcraft/tap/git-ca
-npm install -g @hankcraft/git-ca
+```
+```sh
 bun install -g @hankcraft/git-ca
-npx @hankcraft/git-ca --help
+```
+```sh
+pnpm install -g @hankcraft/git-ca
+```
+```sh
+npm install -g @hankcraft/git-ca
+
+
+Or execute directly:
+```sh
 bunx @hankcraft/git-ca --help
+```
+```sh
+pnpx @hankcraft/git-ca --help
+```
+```sh
+npx @hankcraft/git-ca --help
 ```
 
 
-Option 2: Install from this checkout:
+**Option 2: Install from this checkout**
 
 ```sh
 cargo install --path .
@@ -44,7 +62,7 @@ git add <files>
 git ca
 ```
 
-For pull requests:
+For pull requests, execute under feature branch:
 
 ```sh
 git ca pr
@@ -57,6 +75,7 @@ git ca pr
 - Supports GitHub Copilot and OpenAI Codex (ChatGPT) backends, with model selection.
 - Opens generated text in your editor by default, with `--yes` / `-y` for direct commit or PR creation.
 - Supports multiple AI provider accounts, with token persistence and swapping.
+- Supports custom prompts for commit and PR messages.
 
 ## Commands
 
