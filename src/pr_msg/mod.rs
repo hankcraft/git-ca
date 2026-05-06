@@ -55,13 +55,18 @@ Rules:
 - do not invent tickets, reviewers, labels, or test results not present in the input
 ";
 
-    pub fn build(source: PrSource, base: &str, text: &str) -> Vec<ChatMessage> {
+    pub fn build(
+        source: PrSource,
+        base: &str,
+        text: &str,
+        system_prompt: Option<&str>,
+    ) -> Vec<ChatMessage> {
         let source_label = match source {
             PrSource::Diff => "Branch diff",
             PrSource::Commits => "Commit log",
         };
         vec![
-            ChatMessage::system(SYSTEM_PROMPT),
+            ChatMessage::system(system_prompt.unwrap_or(SYSTEM_PROMPT)),
             ChatMessage::user(format!(
                 "Base branch: {base}\nSource: {source_label}\n\n```text\n{}\n```",
                 truncate(text)
@@ -91,7 +96,7 @@ Rules:
 
         #[test]
         fn build_mentions_commit_log_source() {
-            let messages = build(PrSource::Commits, "main", "feat: add PR flow");
+            let messages = build(PrSource::Commits, "main", "feat: add PR flow", None);
 
             assert!(messages[1].content.contains("Base branch: main"));
             assert!(messages[1].content.contains("Source: Commit log"));
@@ -99,8 +104,21 @@ Rules:
         }
 
         #[test]
+        fn build_uses_system_prompt_override() {
+            let messages = build(
+                PrSource::Diff,
+                "main",
+                "diff --git a/x b/x",
+                Some("custom PR prompt"),
+            );
+
+            assert_eq!(messages[0].content, "custom PR prompt");
+            assert!(messages[1].content.contains("Source: Branch diff"));
+        }
+
+        #[test]
         fn system_prompt_requests_review_story_sections() {
-            let messages = build(PrSource::Diff, "main", "diff --git a/x b/x");
+            let messages = build(PrSource::Diff, "main", "diff --git a/x b/x", None);
 
             let system = &messages[0].content;
             for section in [
