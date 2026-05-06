@@ -106,6 +106,8 @@ change: <https://docs.github.com/en/copilot/concepts/billing/copilot-requests#mo
 ```text
 ~/.config/git-ca/config.json
 ~/.config/git-ca/auth.json
+~/.config/git-ca/commit-system-prompt.md
+~/.config/git-ca/pr-system-prompt.md
 ```
 
 On Unix, the config directory is set to `0700` and JSON files are written with `0600` permissions.
@@ -115,6 +117,15 @@ On Unix, the config directory is set to `0700` and JSON files are written with `
 - **default_model**: The default model to use for `git ca` and `git ca pr`.
 - **auto_accept**: Whether to automatically accept generated commit messages.
 - **auto_accept_pr**: Whether to automatically accept generated PR messages.
+
+### System prompt overrides
+
+To replace the built-in system prompts, manually create or edit these files:
+
+- `~/.config/git-ca/commit-system-prompt.md` for `git ca`.
+- `~/.config/git-ca/pr-system-prompt.md` for `git ca pr`.
+
+When `XDG_CONFIG_HOME` is set, use `$XDG_CONFIG_HOME/git-ca/` instead of `~/.config/git-ca/`. Missing files are ignored. Empty or unreadable files print a warning and fall back to the built-in prompt. Custom PR prompts must still ask the model to return JSON with `title` and `body`.
 
 ## Development
 

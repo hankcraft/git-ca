@@ -48,11 +48,12 @@ Runtime flow for `git ca`:
 2. Resolve the active account's backend (Copilot or Codex).
 3. Load the persisted default model, unless `--model` was passed; fall back to a backend-specific default (`gpt-4o` for Copilot, `gpt-5.5` for Codex).
 4. For Copilot: refresh the Copilot API token from the stored GitHub token. For Codex: use the cached ChatGPT access token, refreshing via `/oauth/token` on 401.
-5. Send the chat request with the Conventional Commits prompt - chat-completions for Copilot, Responses-API streamed over SSE for Codex.
-6. Strip an accidental outer code fence from the model response.
-7. Write `.git/COMMIT_EDITMSG`.
-8. Run `git commit -e -F .git/COMMIT_EDITMSG`, optionally with `--no-verify`.
-9. If `--yes` / `-y` or `config.auto_accept` is enabled, run `git commit -F .git/COMMIT_EDITMSG` instead so Git commits the generated message directly.
+5. Load `$XDG_CONFIG_HOME/git-ca/commit-system-prompt.md` or `~/.config/git-ca/commit-system-prompt.md` if present and non-empty; otherwise use the built-in Conventional Commits prompt.
+6. Send the chat request - chat-completions for Copilot, Responses-API streamed over SSE for Codex.
+7. Strip an accidental outer code fence from the model response.
+8. Write `.git/COMMIT_EDITMSG`.
+9. Run `git commit -e -F .git/COMMIT_EDITMSG`, optionally with `--no-verify`.
+10. If `--yes` / `-y` or `config.auto_accept` is enabled, run `git commit -F .git/COMMIT_EDITMSG` instead so Git commits the generated message directly.
 
 Runtime flow for `git ca pr`:
 
@@ -60,10 +61,11 @@ Runtime flow for `git ca pr`:
 2. Resolve `git merge-base <base> HEAD`.
 3. Read either `git diff --no-color -U3 <merge-base>...HEAD` or `git log --no-merges --format=%s%n%n%b <merge-base>..HEAD`.
 4. Resolve the active account's backend and model the same way `git ca` does.
-5. Ask the backend for compact JSON containing `title` and `body`.
-6. Parse and validate the generated PR text.
-7. Unless `--yes` / `-y` or `config.auto_accept_pr` is enabled, write `.git/PULL_REQUEST_EDITMSG`, open the configured Git editor, and read back the edited title/body.
-8. Write `.git/PULL_REQUEST_BODY` and run `gh pr create --base <base> --title <title> --body-file <path>`.
+5. Load `$XDG_CONFIG_HOME/git-ca/pr-system-prompt.md` or `~/.config/git-ca/pr-system-prompt.md` if present and non-empty; otherwise use the built-in PR prompt.
+6. Ask the backend for compact JSON containing `title` and `body`.
+7. Parse and validate the generated PR text.
+8. Unless `--yes` / `-y` or `config.auto_accept_pr` is enabled, write `.git/PULL_REQUEST_EDITMSG`, open the configured Git editor, and read back the edited title/body.
+9. Write `.git/PULL_REQUEST_BODY` and run `gh pr create --base <base> --title <title> --body-file <path>`.
 
 ## Codex Backend Caveat
 
