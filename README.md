@@ -20,6 +20,7 @@ pnpm install -g @hankcraft/git-ca
 ```
 ```sh
 npm install -g @hankcraft/git-ca
+```
 
 
 Or execute directly:
@@ -139,12 +140,8 @@ On Unix, the config directory is set to `0700` and JSON files are written with `
 
 ### System prompt overrides
 
-To replace the built-in system prompts, manually create or edit these files:
-
-- `~/.config/git-ca/commit-system-prompt.md` for `git ca`.
-- `~/.config/git-ca/pr-system-prompt.md` for `git ca pr`.
-
-When `XDG_CONFIG_HOME` is set, use `$XDG_CONFIG_HOME/git-ca/` instead of `~/.config/git-ca/`. Missing files are ignored. Empty or unreadable files print a warning and fall back to the built-in prompt. Custom PR prompts must still ask the model to return JSON with `title` and `body`.
+To replace the built-in system prompts, manually create or edit these files: `commit-system-prompt.md` and `pr-system-prompt.md`.
+Missing files are ignored. Empty or unreadable files print a warning and fall back to the built-in prompt.
 
 ## Development
 
