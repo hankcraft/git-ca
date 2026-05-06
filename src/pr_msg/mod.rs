@@ -10,7 +10,7 @@ pub mod prompt {
     /// drafting so PR generation handles large branches predictably.
     const SOURCE_CHAR_LIMIT: usize = 32_000;
 
-    const SYSTEM_PROMPT: &str = "\
+    const SYSTEM_PROMPT_PREFIX: &str = "\
 You are a senior engineer writing GitHub pull request text.
 
 Respond with ONLY compact JSON — no prose before or after, no code fences, no
@@ -22,7 +22,9 @@ Required JSON shape:
   \"body\": \"Markdown PR body\"
 }
 
-Rules:
+";
+
+    const PREDEFINED_RULES: &str = "\
 - title: imperative mood, no trailing period, ≤ 72 chars
 - body: Markdown. Treat it as a mini architecture note that helps reviewers
   answer: \"What am I reviewing, why does it matter, and where should I focus?\"
@@ -59,19 +61,24 @@ Rules:
         source: PrSource,
         base: &str,
         text: &str,
-        system_prompt: Option<&str>,
+        custom_rules: Option<&str>,
     ) -> Vec<ChatMessage> {
         let source_label = match source {
             PrSource::Diff => "Branch diff",
             PrSource::Commits => "Commit log",
         };
         vec![
-            ChatMessage::system(system_prompt.unwrap_or(SYSTEM_PROMPT)),
+            ChatMessage::system(system_prompt(custom_rules)),
             ChatMessage::user(format!(
                 "Base branch: {base}\nSource: {source_label}\n\n```text\n{}\n```",
                 truncate(text)
             )),
         ]
+    }
+
+    fn system_prompt(custom_rules: Option<&str>) -> String {
+        let rules = custom_rules.unwrap_or(PREDEFINED_RULES);
+        format!("{SYSTEM_PROMPT_PREFIX}Rules:\n{rules}")
     }
 
     fn truncate(text: &str) -> String {
@@ -104,16 +111,28 @@ Rules:
         }
 
         #[test]
-        fn build_uses_system_prompt_override() {
+        fn build_uses_custom_rules_in_predefined_system_prompt() {
             let messages = build(
                 PrSource::Diff,
                 "main",
                 "diff --git a/x b/x",
-                Some("custom PR prompt"),
+                Some("- custom PR rule\n"),
             );
 
-            assert_eq!(messages[0].content, "custom PR prompt");
+            assert!(messages[0].content.contains("Required JSON shape"));
+            assert!(messages[0].content.contains("Rules:\n- custom PR rule\n"));
+            assert!(!messages[0].content.contains("- title: imperative mood"));
             assert!(messages[1].content.contains("Source: Branch diff"));
+        }
+
+        #[test]
+        fn build_uses_predefined_rules_by_default() {
+            let messages = build(PrSource::Diff, "main", "diff --git a/x b/x", None);
+
+            assert!(messages[0]
+                .content
+                .contains("Rules:\n- title: imperative mood"));
+            assert!(messages[0].content.contains("- include these sections"));
         }
 
         #[test]

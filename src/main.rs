@@ -55,12 +55,12 @@ async fn commit(model_override: Option<String>, no_verify: bool, yes: bool) -> R
     let diff = git::diff::staged_diff()?;
     let cfg = config::Config::load()?;
     let auto_accept = yes || cfg.auto_accept;
-    let system_prompt = load_system_prompt_file(
+    let custom_rules = load_system_prompt_file(
         &config::paths::commit_system_prompt_file()?,
         "commit system prompt",
     );
 
-    let messages = commit_msg::prompt::build(&diff, system_prompt.as_deref());
+    let messages = commit_msg::prompt::build(&diff, custom_rules.as_deref());
     let raw = generate_text(model_override, messages, "drafting message").await?;
     let draft = commit_msg::strip_code_fences(&raw);
     if auto_accept {
@@ -88,14 +88,10 @@ async fn pull_request(
         PrSource::Diff => git::pr::branch_diff(&merge_base)?,
         PrSource::Commits => git::pr::commit_log(&merge_base)?,
     };
-    let system_prompt =
+    let custom_rules =
         load_system_prompt_file(&config::paths::pr_system_prompt_file()?, "PR system prompt");
-    let messages = pr_msg::prompt::build(
-        source,
-        &base.pr_base,
-        &source_text,
-        system_prompt.as_deref(),
-    );
+    let messages =
+        pr_msg::prompt::build(source, &base.pr_base, &source_text, custom_rules.as_deref());
     let raw = generate_text(model_override, messages, "drafting PR message").await?;
     let mut draft = pr_msg::parse_json(&raw)?;
     if !auto_accept {

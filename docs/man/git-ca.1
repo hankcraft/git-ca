@@ -155,11 +155,11 @@ accounts hold a GitHub token plus a cached Copilot API token, Codex accounts
 hold ChatGPT access/refresh/id tokens and the linked account id.
 .TP
 .I ~/.config/git-ca/commit-system-prompt.md
-Optional manually edited system prompt override for commit message drafts.
+Optional manually edited rules-section override for commit message drafts.
 .TP
 .I ~/.config/git-ca/pr-system-prompt.md
-Optional manually edited system prompt override for pull request drafts. Custom
-content must still instruct the model to return JSON with title and body.
+Optional manually edited rules-section override for pull request drafts. The
+built-in JSON response contract stays in the prompt.
 .SH SEE ALSO
 .BR git (1),
 .BR git-commit (1),

@@ -30,7 +30,7 @@ impl ChatMessage {
 /// leaving room for the system prompt and the generated message.
 const DIFF_CHAR_LIMIT: usize = 32_000;
 
-const SYSTEM_PROMPT: &str = "\
+const SYSTEM_PROMPT_PREFIX: &str = "\
 You are a senior engineer writing a git commit message for a staged diff.
 
 Respond with ONLY the commit message — no prose before or after, no code
@@ -44,7 +44,9 @@ Follow Conventional Commits strictly:
   [optional body WHAT]
   [optional body IMPACT]
 
-Rules:
+";
+
+const PREDEFINED_RULES: &str = "\
 - type ∈ {feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert}
 - subject: imperative mood, lowercase, no trailing period, ≤ 72 chars
 - leave a blank line between subject and body
@@ -58,11 +60,16 @@ Rules:
 - do not invent requirements, tickets, or co-authors that aren't in the diff
 ";
 
-pub fn build(diff: &str, system_prompt: Option<&str>) -> Vec<ChatMessage> {
+pub fn build(diff: &str, custom_rules: Option<&str>) -> Vec<ChatMessage> {
     vec![
-        ChatMessage::system(system_prompt.unwrap_or(SYSTEM_PROMPT)),
+        ChatMessage::system(system_prompt(custom_rules)),
         ChatMessage::user(format!("Staged diff:\n\n```diff\n{}\n```", truncate(diff))),
     ]
+}
+
+fn system_prompt(custom_rules: Option<&str>) -> String {
+    let rules = custom_rules.unwrap_or(PREDEFINED_RULES);
+    format!("{SYSTEM_PROMPT_PREFIX}Rules:\n{rules}")
 }
 
 fn truncate(diff: &str) -> String {
@@ -98,14 +105,26 @@ mod tests {
     }
 
     #[test]
-    fn build_uses_system_prompt_override() {
+    fn build_uses_custom_rules_in_predefined_system_prompt() {
         let msgs = build(
             "diff --git a/x b/x\n+new line\n",
-            Some("custom commit prompt"),
+            Some("- custom commit rule\n"),
         );
 
-        assert_eq!(msgs[0].content, "custom commit prompt");
+        assert!(msgs[0]
+            .content
+            .contains("Follow Conventional Commits strictly"));
+        assert!(msgs[0].content.contains("Rules:\n- custom commit rule\n"));
+        assert!(!msgs[0].content.contains("- subject: imperative mood"));
         assert!(msgs[1].content.contains("+new line"));
+    }
+
+    #[test]
+    fn build_uses_predefined_rules_by_default() {
+        let msgs = build("diff --git a/x b/x\n+new line\n", None);
+
+        assert!(msgs[0].content.contains("Rules:\n- type ∈"));
+        assert!(msgs[0].content.contains("- subject: imperative mood"));
     }
 
     #[test]
