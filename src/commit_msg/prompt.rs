@@ -58,9 +58,9 @@ Rules:
 - do not invent requirements, tickets, or co-authors that aren't in the diff
 ";
 
-pub fn build(diff: &str) -> Vec<ChatMessage> {
+pub fn build(diff: &str, system_prompt: Option<&str>) -> Vec<ChatMessage> {
     vec![
-        ChatMessage::system(SYSTEM_PROMPT),
+        ChatMessage::system(system_prompt.unwrap_or(SYSTEM_PROMPT)),
         ChatMessage::user(format!("Staged diff:\n\n```diff\n{}\n```", truncate(diff))),
     ]
 }
@@ -91,16 +91,27 @@ mod tests {
     #[test]
     fn short_diff_passes_through_unchanged() {
         let diff = "diff --git a/x b/x\n+new line\n";
-        let msgs = build(diff);
+        let msgs = build(diff, None);
         assert_eq!(msgs.len(), 2);
         assert_eq!(msgs[0].role, "system");
         assert!(msgs[1].content.contains("+new line"));
     }
 
     #[test]
+    fn build_uses_system_prompt_override() {
+        let msgs = build(
+            "diff --git a/x b/x\n+new line\n",
+            Some("custom commit prompt"),
+        );
+
+        assert_eq!(msgs[0].content, "custom commit prompt");
+        assert!(msgs[1].content.contains("+new line"));
+    }
+
+    #[test]
     fn oversize_diff_gets_truncated_with_marker() {
         let diff: String = "+".repeat(DIFF_CHAR_LIMIT + 100);
-        let msgs = build(&diff);
+        let msgs = build(&diff, None);
         assert!(msgs[1].content.contains("diff truncated"));
         // content length <= limit + marker slack
         assert!(msgs[1].content.len() < DIFF_CHAR_LIMIT + 500);
@@ -114,7 +125,7 @@ mod tests {
         s.push('é');
         s.push_str(&"x".repeat(100));
         assert!(s.len() > DIFF_CHAR_LIMIT);
-        let msgs = build(&s);
+        let msgs = build(&s, None);
         assert!(msgs[1].content.contains("diff truncated"));
     }
 }

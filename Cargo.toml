@@ -6,7 +6,7 @@ description = "git plugin that drafts commit messages using GitHub Copilot"
 license = "MIT"
 repository = "https://github.com/hankcraft/git-ca"
 homepage = "https://github.com/hankcraft/git-ca"
-keywords = ["git", "cli", "git-plugin", "commit", "copilot", "codex", "rust"]
+keywords = ["git", "cli", "copilot", "codex", "rust"]
 
 [[bin]]
 name = "git-ca"

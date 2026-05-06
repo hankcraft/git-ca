@@ -55,8 +55,12 @@ async fn commit(model_override: Option<String>, no_verify: bool, yes: bool) -> R
     let diff = git::diff::staged_diff()?;
     let cfg = config::Config::load()?;
     let auto_accept = yes || cfg.auto_accept;
+    let system_prompt = load_system_prompt_file(
+        &config::paths::commit_system_prompt_file()?,
+        "commit system prompt",
+    );
 
-    let messages = commit_msg::prompt::build(&diff);
+    let messages = commit_msg::prompt::build(&diff, system_prompt.as_deref());
     let raw = generate_text(model_override, messages, "drafting message").await?;
     let draft = commit_msg::strip_code_fences(&raw);
     if auto_accept {
@@ -84,7 +88,14 @@ async fn pull_request(
         PrSource::Diff => git::pr::branch_diff(&merge_base)?,
         PrSource::Commits => git::pr::commit_log(&merge_base)?,
     };
-    let messages = pr_msg::prompt::build(source, &base.pr_base, &source_text);
+    let system_prompt =
+        load_system_prompt_file(&config::paths::pr_system_prompt_file()?, "PR system prompt");
+    let messages = pr_msg::prompt::build(
+        source,
+        &base.pr_base,
+        &source_text,
+        system_prompt.as_deref(),
+    );
     let raw = generate_text(model_override, messages, "drafting PR message").await?;
     let mut draft = pr_msg::parse_json(&raw)?;
     if !auto_accept {
@@ -95,6 +106,27 @@ async fn pull_request(
 
 fn pr_auto_accept(yes: bool, cfg: &config::Config) -> bool {
     yes || cfg.auto_accept_pr
+}
+
+fn load_system_prompt_file(path: &std::path::Path, label: &str) -> Option<String> {
+    match std::fs::read_to_string(path) {
+        Ok(content) if content.trim().is_empty() => {
+            eprintln!(
+                "git-ca: {label} file {} is empty; using built-in prompt",
+                path.display()
+            );
+            None
+        }
+        Ok(content) => Some(content),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            eprintln!(
+                "git-ca: unable to read {label} file {}: {e}; using built-in prompt",
+                path.display()
+            );
+            None
+        }
+    }
 }
 
 async fn generate_text(
@@ -487,6 +519,43 @@ mod tests {
         };
 
         assert!(pr_auto_accept(false, &cfg));
+    }
+
+    fn tmp_prompt_file(name: &str) -> std::path::PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!("git-ca-test-{}-{name}", std::process::id()));
+        path
+    }
+
+    #[test]
+    fn load_system_prompt_file_returns_non_empty_content() {
+        let path = tmp_prompt_file("valid-prompt.md");
+        std::fs::write(&path, "custom prompt\n").unwrap();
+
+        assert_eq!(
+            load_system_prompt_file(&path, "test prompt").as_deref(),
+            Some("custom prompt\n")
+        );
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn load_system_prompt_file_ignores_missing_file() {
+        let path = tmp_prompt_file("missing-prompt.md");
+        let _ = std::fs::remove_file(&path);
+
+        assert!(load_system_prompt_file(&path, "test prompt").is_none());
+    }
+
+    #[test]
+    fn load_system_prompt_file_ignores_empty_file() {
+        let path = tmp_prompt_file("empty-prompt.md");
+        std::fs::write(&path, " \n\t").unwrap();
+
+        assert!(load_system_prompt_file(&path, "test prompt").is_none());
+
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
