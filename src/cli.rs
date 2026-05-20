@@ -343,11 +343,7 @@ mod tests {
 
     #[test]
     fn git_help_man_page_is_packaged() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("docs")
-            .join("man")
-            .join("git-ca.1");
-        let man_page = std::fs::read_to_string(path).unwrap();
+        let man_page = include_str!("../docs/man/git-ca.1");
 
         assert!(man_page.contains(".TH GIT-CA 1"));
         assert!(man_page.contains("git ca \\-h"));
