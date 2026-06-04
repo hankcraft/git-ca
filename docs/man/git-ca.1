@@ -18,7 +18,10 @@ message, writes the draft to Git's commit message file, and runs
 .BR git-commit (1).
 For pull requests it summarizes branch changes, asks the active backend for a
 title and Markdown body, and runs
-.BR gh-pr-create (1).
+.BR gh-pr-create (1)
+or
+.BR gh-pr-edit (1)
+(if an open pull request already exists).
 .PP
 Git handles
 .B git ca \--help
@@ -37,7 +40,7 @@ account's backend. Overrides the persisted default model.
 .TP
 .BR \-y , " \--yes"
 Accept generated text without opening the editor. For commits, this commits
-directly. For pull requests, this creates the pull request directly.
+directly. For pull requests, this creates or updates the pull request directly.
 .TP
 .BR \-h , " \--help"
 Print command help when the binary is invoked directly or through
@@ -87,7 +90,10 @@ this prints the known accepted slugs.
 .TP
 .BI "pr [\--base " BRANCH "] [\--source " diff|commits "]"
 Draft a pull request title and Markdown body for the current branch, then run
-.BR "gh pr create" .
+.BR "gh pr create"
+(or
+.BR "gh pr edit"
+if an open pull request already exists).
 When
 .BI \--base
 is omitted, the base branch is resolved from
@@ -99,7 +105,7 @@ The default source is the branch diff against the merge base; use
 to summarize commit messages instead.
 Use
 .B \--yes
-on this command to skip editor review and create the pull request directly.
+on this command to skip editor review and create or update the pull request directly.
 Persisted PR auto-accept config has the same effect.
 .TP
 .B config list
@@ -139,7 +145,7 @@ Commit the generated message directly:
 Draft a pull request against develop:
 .B git ca pr \--base develop
 .TP
-Create the generated pull request directly:
+Create or update the generated pull request directly:
 .B git ca pr \--yes
 .TP
 Show clap-generated help instead of this manual page:

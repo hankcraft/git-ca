@@ -72,9 +72,9 @@ git ca pr
 ## Key Features
 
 - Drafts Conventional Commits messages from staged changes.
-- Drafts PR title/body text from branch diffs or commit logs and creates PRs with `gh`.
+- Drafts PR title/body text from branch diffs or commit logs and creates or updates PRs with `gh`.
 - Supports GitHub Copilot and OpenAI Codex (ChatGPT) backends, with model selection.
-- Opens generated text in your editor by default, with `--yes` / `-y` for direct commit or PR creation.
+- Opens generated text in your editor by default, with `--yes` / `-y` for direct commit or PR creation/updating.
 - Supports multiple AI provider accounts, with token persistence and swapping.
 - Supports custom prompts for commit and PR messages.
 
@@ -83,11 +83,11 @@ git ca pr
 | Command | Description |
 | --- | --- |
 | `git ca` | Draft a message for staged changes and run `git commit -e -F <message>` |
-| `git ca pr` | Draft a PR title/body from current branch changes and run `gh pr create` |
+| `git ca pr` | Draft a PR title/body from current branch changes and run `gh pr create` (or `gh pr edit` if a PR already exists) |
 | `git ca pr --base <branch>` | Compare the current branch against a specific PR base branch |
 | `git ca pr --source commits` | Draft PR text from commit messages instead of the branch diff |
 | `git ca --model <id>`, `git ca -m <id>` | Use a specific backend model for this command |
-| `git ca --yes`, `git ca -y` | Accept generated text without opening the editor; for PRs this creates the PR directly |
+| `git ca --yes`, `git ca -y` | Accept generated text without opening the editor; for PRs this creates or updates the PR directly |
 | `git ca --no-verify` | Pass `--no-verify` through to `git commit` |
 | `git ca auth login` | Prompt for backend on a TTY, then log in (defaults to Copilot when stdin is not a TTY) |
 | `git ca auth login <account>` | Same prompt behavior, then store credentials for the named account |
