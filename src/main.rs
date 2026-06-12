@@ -97,7 +97,11 @@ async fn pull_request(
     if !auto_accept {
         draft = git::pr::edit_message(&draft)?;
     }
-    git::pr::create_pull_request(&base.pr_base, &draft.title, &draft.body)
+    if git::pr::detect_open_pr()? {
+        git::pr::update_pull_request(&draft.title, &draft.body)
+    } else {
+        git::pr::create_pull_request(&base.pr_base, &draft.title, &draft.body)
+    }
 }
 
 fn pr_auto_accept(yes: bool, cfg: &config::Config) -> bool {

@@ -129,6 +129,37 @@ pub fn create_pull_request(base: &str, title: &str, body: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn detect_open_pr() -> Result<bool> {
+    let args = gh_pr_view_args();
+    let out = Command::new("gh").args(&args).output()?;
+    if !out.status.success() {
+        return Ok(false);
+    }
+    #[derive(serde::Deserialize)]
+    struct PrState {
+        state: String,
+    }
+    let pr: PrState = serde_json::from_slice(&out.stdout)?;
+    Ok(pr.state == "OPEN")
+}
+
+pub fn update_pull_request(title: &str, body: &str) -> Result<()> {
+    let path = message_path("PULL_REQUEST_BODY")?;
+    std::fs::write(&path, body)?;
+    let body_file = path
+        .to_str()
+        .ok_or_else(|| Error::Config("PULL_REQUEST_BODY path is not UTF-8".into()))?;
+    let args = gh_pr_edit_args(title, body_file);
+    let status = Command::new("gh").args(&args).status()?;
+    if !status.success() {
+        return Err(Error::Git(
+            "gh pr edit".to_string(),
+            status.code().unwrap_or(1),
+        ));
+    }
+    Ok(())
+}
+
 fn message_path(name: &str) -> Result<PathBuf> {
     let git_dir = super::run_git_capture(&["rev-parse", "--git-dir"])?
         .trim()
@@ -192,6 +223,26 @@ pub(crate) fn gh_pr_create_args(base: &str, title: &str, body_file: &str) -> Vec
     ]
 }
 
+pub(crate) fn gh_pr_view_args() -> Vec<String> {
+    vec![
+        "pr".to_string(),
+        "view".to_string(),
+        "--json".to_string(),
+        "state".to_string(),
+    ]
+}
+
+pub(crate) fn gh_pr_edit_args(title: &str, body_file: &str) -> Vec<String> {
+    vec![
+        "pr".to_string(),
+        "edit".to_string(),
+        "--title".to_string(),
+        title.to_string(),
+        "--body-file".to_string(),
+        body_file.to_string(),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +274,26 @@ mod tests {
                 "main",
                 "--title",
                 "Add PR drafts",
+                "--body-file",
+                ".git/PULL_REQUEST_BODY"
+            ]
+        );
+    }
+
+    #[test]
+    fn gh_pr_view_args_fetches_state_only() {
+        assert_eq!(gh_pr_view_args(), ["pr", "view", "--json", "state"]);
+    }
+
+    #[test]
+    fn gh_pr_edit_args_includes_title_and_body_file() {
+        assert_eq!(
+            gh_pr_edit_args("Update title", ".git/PULL_REQUEST_BODY"),
+            [
+                "pr",
+                "edit",
+                "--title",
+                "Update title",
                 "--body-file",
                 ".git/PULL_REQUEST_BODY"
             ]
