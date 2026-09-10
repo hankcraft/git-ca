@@ -84,9 +84,8 @@ provider-specific token state (Copilot token TTL or ChatGPT account/last
 refresh).
 .TP
 .B models
-List available models for the active account's backend. For Copilot this hits
-the live model-listing endpoint; for Codex (which has no listing endpoint)
-this prints the known accepted slugs.
+List available models from the active account's live backend catalog.
+Codex shows listed models in server priority order.
 .TP
 .BI "pr [\--base " BRANCH "] [\--source " diff|commits "]"
 Draft a pull request title and Markdown body for the current branch, then run

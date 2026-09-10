@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod client;
+pub mod models;
 pub mod sse;
 
 pub use chat::FALLBACK_MODEL;

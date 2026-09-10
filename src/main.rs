@@ -377,15 +377,19 @@ async fn models() -> Result<()> {
             }
         }
         Provider::Codex => {
-            // Codex (`/responses` on `chatgpt.com/backend-api/codex`) does not
-            // expose a chat-models listing endpoint. Show the slugs that a
-            // smoke test confirmed the backend accepts via ChatGPT auth so
-            // users can pick one without guessing — note that `gpt-5` and
-            // `gpt-5-codex` are explicitly rejected with "not supported" 400s
-            // even though they're valid slugs in other contexts.
-            println!("(codex backend has no models endpoint — known accepted slugs:)");
-            for slug in ["gpt-5.5", "gpt-5.4"] {
-                println!("{slug}");
+            let http = http_client()?;
+            let list =
+                codex::call_authed(
+                    &http,
+                    |client| async move { client.list_chat_models().await },
+                )
+                .await?;
+            if list.is_empty() {
+                println!("(no chat models available on this account)");
+                return Ok(());
+            }
+            for model in list {
+                println!("{:<30}  {}", model.slug, model.display_name);
             }
         }
     }
@@ -415,10 +419,8 @@ fn config_list_lines(cfg: &config::Config) -> Vec<String> {
 }
 
 async fn config_set_model(id: &str) -> Result<()> {
-    // Only Copilot exposes a model-list endpoint we can validate against.
-    // For Codex we accept the id verbatim because the server returns a clear
-    // 400 when the slug is unsupported, and we'd otherwise need to maintain
-    // a hand-curated allow-list that drifts.
+    // Codex accepts explicit slugs outside the visible catalog; the Responses
+    // endpoint remains the final availability check.
     if let Ok(Provider::Copilot) = active_provider() {
         let http = http_client()?;
         let available =
