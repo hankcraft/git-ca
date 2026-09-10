@@ -3,6 +3,10 @@ use serde::Deserialize;
 use super::client::{map_error, Client};
 use crate::error::Result;
 
+// /models gates availability on Codex CLI versions, not git-ca's release version.
+// Verified against Codex 0.154.0; update when tracking newer backend capabilities.
+const CODEX_CLIENT_VERSION: &str = "0.154.0";
+
 #[derive(Debug, Deserialize)]
 pub struct Model {
     pub slug: String,
@@ -21,7 +25,7 @@ impl Client {
         let resp = self
             .http()
             .get(format!("{}/models", self.base_url()))
-            .query(&[("client_version", env!("CARGO_PKG_VERSION"))])
+            .query(&[("client_version", CODEX_CLIENT_VERSION)])
             .headers(self.headers())
             .send()
             .await?;
@@ -44,11 +48,13 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
-    async fn discovery_uses_account_catalog_visibility_and_priority() {
+    async fn discovery_uses_codex_version_and_account_catalog_visibility_and_priority() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/models"))
-            .and(query_param("client_version", env!("CARGO_PKG_VERSION")))
+            // The backend gates models on Codex versions, not git-ca releases.
+            .and(query_param("client_version", "0.154.0"))
+            .and(header("User-Agent", concat!("git-ca/", env!("CARGO_PKG_VERSION"))))
             .and(header("Authorization", "Bearer at_test"))
             .and(header("ChatGPT-Account-ID", "acct_test"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
