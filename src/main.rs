@@ -378,12 +378,12 @@ async fn models() -> Result<()> {
         }
         Provider::Codex => {
             let http = http_client()?;
-            let list =
-                codex::call_authed(
-                    &http,
-                    |client| async move { client.list_chat_models().await },
-                )
-                .await?;
+            let version = codex::models::installed_client_version()?;
+            let list = codex::call_authed(&http, |client| {
+                let version = version.clone();
+                async move { client.list_chat_models(&version).await }
+            })
+            .await?;
             if list.is_empty() {
                 println!("(no chat models available on this account)");
                 return Ok(());
