@@ -1,0 +1,13 @@
+schema: spec-driven
+context: |
+  git-ca is a Rust 2021 Git subcommand that drafts commit messages and PR text
+  using GitHub Copilot or OpenAI Codex, then runs Git or GitHub CLI.
+  Stack: clap CLI, tokio async runtime, reqwest HTTP, serde JSON, anyhow/thiserror.
+  Keep changes focused and follow existing module boundaries in src/.
+  Use Conventional Commits and atomic commits. Preserve editor review by default.
+  Runtime configuration and authentication live under XDG_CONFIG_HOME/git-ca
+  or ~/.config/git-ca; preserve restrictive credential file permissions.
+  Tests use wiremock for HTTP and may require binding local ports.
+  Standard checks: cargo fmt --check; cargo clippy --all-targets --all-features
+  -- -D warnings; cargo test.
+  See docs/development.md for architecture and release conventions.

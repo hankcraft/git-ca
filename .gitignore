@@ -2,7 +2,11 @@
 Cargo.lock.bak
 
 # Claude Code / workspace artifacts
-/.agents/
+/.agents/*
+!/.agents/skills/
+/.agents/skills/*
+!/.agents/skills/.openspec-target
+!/.agents/skills/openspec-*/
 /.claude/
 /.codex
 /docs/superpowers/

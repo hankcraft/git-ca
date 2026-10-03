@@ -98,6 +98,25 @@ Recommended change flow:
 4. Run the full check set above.
 5. Commit related changes atomically with an informative Conventional Commits message.
 
+## OpenSpec
+
+Project planning uses OpenSpec's `spec-driven` schema. Project context lives in
+`openspec/config.yaml`, current specs in `openspec/specs/`, and proposed changes
+in `openspec/changes/`.
+
+Install the CLI and refresh the checked-in Codex skills when needed:
+
+```sh
+pnpm add -g @fission-ai/openspec@1.13.0
+openspec init --tools codex --profile core
+```
+
+In Codex, use `$openspec-propose "describe the change"` to draft a proposal,
+review its artifacts, then use `$openspec-apply-change` to implement it and
+`$openspec-archive-change` once complete. Use `$openspec-explore` for investigation.
+
+Validate changes and specs with `openspec validate --all --strict`.
+
 ## Release Flow
 
 Releases are built by cargo-dist and can be published either from GitHub Actions or from a local maintainer machine.
