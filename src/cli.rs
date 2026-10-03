@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
+use std::path::PathBuf;
 
 /// Authentication backend selectable on `auth login`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
@@ -28,6 +29,10 @@ pub struct Cli {
     /// Copilot model id to use for drafting (overrides the persisted default).
     #[arg(short = 'm', long = "model", global = true)]
     pub model: Option<String>,
+
+    /// Replace writing rules with a UTF-8 file for commit or PR drafting.
+    #[arg(long, global = true, value_name = "PATH")]
+    pub rules_file: Option<PathBuf>,
 
     /// Accept generated text without opening the editor.
     #[arg(short = 'y', long = "yes", global = true)]
@@ -127,6 +132,54 @@ pub enum ConfigAction {
 mod tests {
     use super::*;
     use clap::Parser;
+
+    #[test]
+    fn parses_global_rules_file_for_both_drafting_commands() {
+        assert!(Cli::try_parse_from(["git-ca"])
+            .unwrap()
+            .rules_file
+            .is_none());
+        for args in [
+            vec![
+                "git-ca",
+                "--rules-file",
+                "./rules.md",
+                "-m",
+                "gpt-4o",
+                "-y",
+                "-n",
+            ],
+            vec![
+                "git-ca",
+                "--rules-file",
+                "./rules.md",
+                "pr",
+                "--source",
+                "diff",
+                "-m",
+                "gpt-4o",
+                "-y",
+                "-n",
+            ],
+            vec![
+                "git-ca",
+                "pr",
+                "--source",
+                "commits",
+                "--rules-file",
+                "./rules.md",
+                "-m",
+                "gpt-4o",
+                "-y",
+                "-n",
+            ],
+        ] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            assert_eq!(cli.rules_file, Some(PathBuf::from("./rules.md")));
+            assert_eq!(cli.model.as_deref(), Some("gpt-4o"));
+            assert!(cli.yes && cli.no_verify);
+        }
+    }
 
     #[test]
     fn parses_yes_long_flag() {
