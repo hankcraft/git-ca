@@ -176,11 +176,24 @@ For example, a PR rules file can contain:
 - Do not invent test results or issue references.
 ```
 
-Explicit files take precedence without reading the default file or persisting a setting. Contents are read once as UTF-8 and preserved verbatim. Relative paths resolve from the invocation's working directory, including repository subdirectories; absolute paths work directly. Any extension is accepted. `-` means a literal filename; quoted tilde and interpolation-like text are not expanded by git-ca. There is no stdin or template syntax.
+Explicit files take precedence, bypassing local Git rules-config lookup and default-file reads without persisting a setting. Contents are read once as UTF-8 and preserved verbatim. Relative flag paths resolve from the invocation's working directory, including repository subdirectories; absolute paths work directly. Any extension is accepted. `-` means a literal filename; quoted tilde and interpolation-like text are not expanded by git-ca. There is no stdin or template syntax.
 
 A missing, unreadable, directory, non-UTF-8, empty, or whitespace-only explicit file causes exit 1 with its path and reason, without printing contents or falling back. This stops generation, editor review, commits, and PR creation/updates. Repository, config, and source preconditions may fail first.
 
-Without the flag, commit drafts use `commit-system-prompt.md` and PR drafts use `pr-system-prompt.md` from the config directory above. Each command reads only its own file. Missing files silently use built-in rules. Empty or unreadable files (including invalid UTF-8) warn and fall back to built-in rules.
+Select one shared rules file automatically for this repository:
+
+```sh
+git config --local ca.rulesFile prompts/rules.md
+git ca
+git ca pr --source commits
+git config --local --unset-all ca.rulesFile # Restore command-specific defaults
+```
+
+Precedence is `--rules-file`, repository-local `ca.rulesFile`, command-specific default file, then built-in rules. Only local Git config is queried; global and system settings are ignored, and the last value wins if multiple local values exist. The configured file applies to commits and PR creation/updates with either source. Auth, models, and config commands ignore it without lookup.
+
+Relative configured paths resolve from the current work-tree root, including invocation from a subdirectory or linked worktree. Absolute configured paths work directly. Spaces are preserved, with the same literal-path and UTF-8 content rules as the flag. Configured files bypass default-file reads. Empty or whitespace-only settings, invalid configured files (the same failures listed above), and Git lookup errors stop drafting without fallback; diagnostics identify `ca.rulesFile` and the path and reason where applicable.
+
+When both the flag and local key are absent, commit drafts use `commit-system-prompt.md` and PR drafts use `pr-system-prompt.md` from the config directory above. Each command reads only its own file. Missing files silently use built-in rules. Empty or unreadable files (including invalid UTF-8) warn and fall back to built-in rules.
 
 ## Development
 

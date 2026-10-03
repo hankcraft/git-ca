@@ -10,5 +10,5 @@
 
 ## 3. Documentation and final verification
 
-- [ ] 3.1 Update `README.md`, `docs/development.md`, and `docs/man/git-ca.1` with local setup/unset commands, precedence, distinct path bases, and strict failures; review examples against the spec and remove claims that defaults always apply whenever the flag is absent.
-- [ ] 3.2 Run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test`; verify all checks pass and report any skipped checks. Commit implementation and documentation in atomic Conventional Commits without pushing.
+- [x] 3.1 Update `README.md`, `docs/development.md`, and `docs/man/git-ca.1` with local setup/unset commands, precedence, distinct path bases, and strict failures; review examples against the spec and remove claims that defaults always apply whenever the flag is absent.
+- [x] 3.2 Run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test`; verify all checks pass and report any skipped checks. Commit implementation and documentation in atomic Conventional Commits without pushing.
