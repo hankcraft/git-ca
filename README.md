@@ -41,6 +41,19 @@ npx @hankcraft/git-ca --help
 cargo install --path .
 ```
 
+For a local dev version, including uncommitted source changes:
+
+```sh
+scripts/install-dev.sh
+git ca --version
+```
+
+Versions look like `0.2.6-dev+abc1234` or `0.2.6-dev+abc1234.dirty`. The script
+changes version metadata only in a temporary source copy, preserves locked
+dependency versions, and reuses `target/` for build caching. It replaces the
+Cargo-installed binary; reinstall the release when finished. Extra arguments
+pass through to `cargo install`, for example `--root /tmp/git-ca-dev-install`.
+
 To make `git ca --help` resolve through Git's man-page help path from a checkout install, also run:
 
 ```sh
@@ -108,6 +121,8 @@ git ca pr
 | `git ca config get-auto-accept-pr` | Print the persisted PR auto-accept setting |
 
 `auth logout` only removes local credentials. Revoke the OAuth grant separately from GitHub account settings if the server-side grant should be invalidated.
+
+When creating a PR, `git ca pr` pushes the current branch to `origin` under the same name and passes it explicitly to `gh pr create --head`. It does not create another local branch or fork the repository. Push failures stop PR creation.
 
 ## Authentication Notes
 
