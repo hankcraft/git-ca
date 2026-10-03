@@ -6,6 +6,32 @@ use std::process::{Command, Output};
 
 use crate::error::{Error, Result};
 
+pub(crate) fn local_rules_file() -> Result<Option<std::path::PathBuf>> {
+    let out = Command::new("git")
+        .args(["config", "--local", "--get", "ca.rulesFile"])
+        .output()
+        .map_err(|e| Error::Config(format!("unable to read ca.rulesFile: {e}")))?;
+    if out.status.code() == Some(1) && out.stderr.is_empty() {
+        return Ok(None);
+    }
+    if !out.status.success() {
+        return Err(Error::Config(format!(
+            "unable to read ca.rulesFile (git exit {}): {}",
+            out.status.code().unwrap_or(1),
+            String::from_utf8_lossy(&out.stderr).trim()
+        )));
+    }
+    let value = String::from_utf8(out.stdout)
+        .map_err(|_| Error::Config("ca.rulesFile path is not UTF-8".into()))?;
+    let value = value.strip_suffix('\n').unwrap_or(&value);
+    if value.trim().is_empty() {
+        return Err(Error::Config(
+            "ca.rulesFile is empty or whitespace-only".into(),
+        ));
+    }
+    Ok(Some(value.into()))
+}
+
 /// Run `git <args>` and capture stdout. Non-zero exit → Error::Git with
 /// stderr piped through so users see the real message.
 pub(crate) fn run_git_capture(args: &[&str]) -> Result<String> {

@@ -1,12 +1,12 @@
 ## 1. Local Git lookup and shared resolution
 
-- [ ] 1.1 Add focused optional `ca.rulesFile` lookup in `src/git/mod.rs`, distinguishing absent keys from errors and preserving path spaces; verify with isolated temporary Git repositories covering absent, local, global-only, duplicate, empty, and failed lookups.
-- [ ] 1.2 Extend shared rules resolution in `src/main.rs` with flag-first selection and repository-root joining for relative configured paths; verify resolver tests covering flag bypass, absolute and subdirectory paths, unchanged defaults, strict configured-file validation, and preserved prompt contracts.
+- [x] 1.1 Add focused optional `ca.rulesFile` lookup in `src/git/mod.rs`, distinguishing absent keys from errors and preserving path spaces; verify with isolated temporary Git repositories covering absent, local, global-only, duplicate, empty, and failed lookups.
+- [x] 1.2 Extend shared rules resolution in `src/main.rs` with flag-first selection and repository-root joining for relative configured paths; verify resolver tests covering flag bypass, absolute and subdirectory paths, unchanged defaults, strict configured-file validation, and preserved prompt contracts.
 
 ## 2. Drafting integration
 
-- [ ] 2.1 Extend `tests/rules_file.rs` and its fake Git command handling for the new read-only queries; verify commit and both PR source flows, configured-file errors before generation/editor/mutations, flag overrides, unchanged missing-key fallback, and no lookup for auth/models/config using `cargo test --test rules_file`.
-- [ ] 2.2 Verify configuration isolation and repository-root behavior from actual repository subdirectories, including linked worktrees; add focused real-Git checks where the fake-command fixture cannot prove these behaviors and run those tests.
+- [x] 2.1 Extend `tests/rules_file.rs` and its fake Git command handling for the new read-only queries; verify commit and both PR source flows, configured-file errors before generation/editor/mutations, flag overrides, unchanged missing-key fallback, and no lookup for auth/models/config using `cargo test --test rules_file`.
+- [x] 2.2 Verify configuration isolation and repository-root behavior from actual repository subdirectories, including linked worktrees; add focused real-Git checks where the fake-command fixture cannot prove these behaviors and run those tests.
 
 ## 3. Documentation and final verification
 

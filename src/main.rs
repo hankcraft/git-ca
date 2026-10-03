@@ -125,14 +125,36 @@ fn resolve_system_prompt_file(
     default: &std::path::Path,
     label: &str,
 ) -> Result<Option<String>> {
-    let Some(path) = explicit else {
+    let configured = if explicit.is_none() {
+        git::local_rules_file()?
+    } else {
+        None
+    };
+    let configured = match configured {
+        Some(path) if path.is_relative() => {
+            let root = git::run_git_capture(&["rev-parse", "--show-toplevel"])
+                .map_err(|e| Error::Config(format!("unable to resolve ca.rulesFile: {e}")))?;
+            Some(std::path::Path::new(root.strip_suffix('\n').unwrap_or(&root)).join(path))
+        }
+        path => path,
+    };
+    let Some(path) = explicit.or(configured.as_deref()) else {
         return Ok(load_system_prompt_file(default, label));
     };
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| Error::Config(format!("unable to read rules file {}: {e}", path.display())))?;
+    let source = if configured.is_some() {
+        "ca.rulesFile "
+    } else {
+        ""
+    };
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        Error::Config(format!(
+            "unable to read {source}rules file {}: {e}",
+            path.display()
+        ))
+    })?;
     if content.trim().is_empty() {
         return Err(Error::Config(format!(
-            "rules file {} is empty or whitespace-only",
+            "{source}rules file {} is empty or whitespace-only",
             path.display()
         )));
     }
@@ -567,7 +589,13 @@ mod tests {
         let rules = " \n- 規則: custom rule\n\t";
         std::fs::write(&path, rules).unwrap();
         std::fs::write(&default, "default-file-rule").unwrap();
-        let loaded = resolve_system_prompt_file(Some(&path), &default, "test").unwrap();
+        let configured = std::env::var_os("GIT_CA_CONFIGURED_RULES_TEST").is_some();
+        let loaded = resolve_system_prompt_file(
+            if configured { None } else { Some(&path) },
+            &default,
+            "test",
+        )
+        .unwrap();
         assert_eq!(loaded.as_deref(), Some(rules));
         let source = "source-only-evidence";
         let commit = commit_msg::prompt::build(source, loaded.as_deref());
@@ -589,6 +617,58 @@ mod tests {
             if messages[1].content.contains("Source:") {
                 assert!(messages[0].content.contains("Required JSON shape"));
             }
+        }
+        if !configured {
+            // Run the same contract assertions with local config in an isolated process.
+            let repo = tmp_prompt_file("configured-contract-repo");
+            std::fs::create_dir_all(&repo).unwrap();
+            let mut git = std::process::Command::new("git");
+            git.current_dir(&repo)
+                .env_clear()
+                .env("PATH", std::env::var_os("PATH").unwrap())
+                .env("HOME", &repo)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", repo.join("no-global"));
+            assert!(git
+                .args(["init", "--template="])
+                .output()
+                .unwrap()
+                .status
+                .success());
+            assert!(std::process::Command::new("git")
+                .current_dir(&repo)
+                .args(["config", "--local", "ca.rulesFile", path.to_str().unwrap()])
+                .env_clear()
+                .env("PATH", std::env::var_os("PATH").unwrap())
+                .env("HOME", &repo)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", repo.join("no-global"))
+                .output()
+                .unwrap()
+                .status
+                .success());
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::explicit_rules_replace_defaults_and_preserve_prompt_contracts",
+                    "--nocapture",
+                ])
+                .current_dir(&repo)
+                .env_clear()
+                .env("PATH", std::env::var_os("PATH").unwrap())
+                .env("HOME", &repo)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", repo.join("no-global"))
+                .env("GIT_CA_CONFIGURED_RULES_TEST", "1")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            std::fs::remove_dir_all(repo).unwrap();
         }
         std::fs::remove_file(path).unwrap();
         std::fs::remove_file(default).unwrap();
@@ -621,20 +701,13 @@ mod tests {
     fn no_explicit_rules_preserve_command_default_and_fallback() {
         for label in ["commit", "PR"] {
             let path = tmp_prompt_file(&format!("{label}-default"));
-            assert!(resolve_system_prompt_file(None, &path, label)
-                .unwrap()
-                .is_none());
+            assert!(load_system_prompt_file(&path, label).is_none());
             let rules = format!("{label} rules\n");
             std::fs::write(&path, &rules).unwrap();
-            assert_eq!(
-                resolve_system_prompt_file(None, &path, label).unwrap(),
-                Some(rules)
-            );
+            assert_eq!(load_system_prompt_file(&path, label), Some(rules));
             for content in [b" \n\t".to_vec(), vec![0xff]] {
                 std::fs::write(&path, content).unwrap();
-                assert!(resolve_system_prompt_file(None, &path, label)
-                    .unwrap()
-                    .is_none());
+                assert!(load_system_prompt_file(&path, label).is_none());
             }
             std::fs::remove_file(path).unwrap();
         }
