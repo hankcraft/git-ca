@@ -118,7 +118,12 @@ pub fn create_pull_request(base: &str, title: &str, body: &str) -> Result<()> {
     let body_file = path
         .to_str()
         .ok_or_else(|| Error::Config("PULL_REQUEST_BODY path is not UTF-8".into()))?;
-    let args = gh_pr_create_args(base, title, body_file);
+    let head = super::run_git_capture(&["symbolic-ref", "--short", "HEAD"])?;
+    let head = head.trim();
+    let push_args = push_branch_args(head);
+    let refs: Vec<&str> = push_args.iter().map(String::as_str).collect();
+    super::run_git_capture(&refs)?;
+    let args = gh_pr_create_args(base, head, title, body_file);
     let status = Command::new("gh").args(&args).status()?;
     if !status.success() {
         return Err(Error::Git(
@@ -210,12 +215,28 @@ pub(crate) fn commit_log_args(base: &str) -> Vec<String> {
     ]
 }
 
-pub(crate) fn gh_pr_create_args(base: &str, title: &str, body_file: &str) -> Vec<String> {
+fn push_branch_args(head: &str) -> Vec<String> {
+    vec![
+        "push".to_string(),
+        "--set-upstream".to_string(),
+        "origin".to_string(),
+        format!("HEAD:refs/heads/{head}"),
+    ]
+}
+
+pub(crate) fn gh_pr_create_args(
+    base: &str,
+    head: &str,
+    title: &str,
+    body_file: &str,
+) -> Vec<String> {
     vec![
         "pr".to_string(),
         "create".to_string(),
         "--base".to_string(),
         base.to_string(),
+        "--head".to_string(),
+        head.to_string(),
         "--title".to_string(),
         title.to_string(),
         "--body-file".to_string(),
@@ -264,14 +285,34 @@ mod tests {
     }
 
     #[test]
-    fn gh_pr_create_args_include_title_and_body_file() {
+    fn push_preserves_feature_branch_name() {
         assert_eq!(
-            gh_pr_create_args("main", "Add PR drafts", ".git/PULL_REQUEST_BODY"),
+            push_branch_args("feature/pr-drafts"),
+            [
+                "push",
+                "--set-upstream",
+                "origin",
+                "HEAD:refs/heads/feature/pr-drafts"
+            ]
+        );
+    }
+
+    #[test]
+    fn gh_pr_create_args_pin_head_to_disable_implicit_forking() {
+        assert_eq!(
+            gh_pr_create_args(
+                "main",
+                "feature/pr-drafts",
+                "Add PR drafts",
+                ".git/PULL_REQUEST_BODY"
+            ),
             [
                 "pr",
                 "create",
                 "--base",
                 "main",
+                "--head",
+                "feature/pr-drafts",
                 "--title",
                 "Add PR drafts",
                 "--body-file",

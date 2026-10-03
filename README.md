@@ -109,6 +109,8 @@ git ca pr
 
 `auth logout` only removes local credentials. Revoke the OAuth grant separately from GitHub account settings if the server-side grant should be invalidated.
 
+When creating a PR, `git ca pr` pushes the current branch to `origin` under the same name and passes it explicitly to `gh pr create --head`. It does not create another local branch or fork the repository. Push failures stop PR creation.
+
 ## Authentication Notes
 
 `git ca auth login` prompts for a backend on a TTY and defaults to Copilot when stdin is piped or running in CI. Copilot supports GitHub device flow or manual token storage with `git ca auth set-token <github-token>`. Codex uses ChatGPT OAuth with a loopback callback on `127.0.0.1:1455` or fallback `:1457`.

@@ -65,7 +65,8 @@ Runtime flow for `git ca pr`:
 6. Ask the backend for compact JSON containing `title` and `body`.
 7. Parse and validate the generated PR text.
 8. Unless `--yes` / `-y` or `config.auto_accept_pr` is enabled, write `.git/PULL_REQUEST_EDITMSG`, open the configured Git editor, and read back the edited title/body.
-9. Write `.git/PULL_REQUEST_BODY` and run `gh pr create --base <base> --title <title> --body-file <path>`.
+9. If an open PR exists for the current branch, write `.git/PULL_REQUEST_BODY` and run `gh pr edit --title <title> --body-file <path>`.
+10. Otherwise, write `.git/PULL_REQUEST_BODY`, push the current branch with `git push --set-upstream origin HEAD:refs/heads/<branch>`, and run `gh pr create --base <base> --head <branch> --title <title> --body-file <path>`. Push failures stop creation; `--head` disables GitHub CLI's implicit pushing and repository forking.
 
 ## Codex Backend Caveat
 
