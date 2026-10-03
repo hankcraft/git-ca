@@ -28,8 +28,10 @@ async fn main() {
 
 async fn run(cli: Cli) -> Result<()> {
     match cli.command {
-        None => commit(cli.model, cli.no_verify, cli.yes).await,
-        Some(Command::Pr { base, source }) => pull_request(cli.model, cli.yes, base, source).await,
+        None => commit(cli.model, cli.no_verify, cli.yes, cli.rules_file).await,
+        Some(Command::Pr { base, source }) => {
+            pull_request(cli.model, cli.yes, base, source, cli.rules_file).await
+        }
         Some(Command::Auth { action }) => match action {
             AuthAction::Login { provider, account } => auth_login(provider, account).await,
             AuthAction::SetToken { account, token } => auth_set_token(&account, &token).await,
@@ -50,15 +52,21 @@ async fn run(cli: Cli) -> Result<()> {
     }
 }
 
-async fn commit(model_override: Option<String>, no_verify: bool, yes: bool) -> Result<()> {
+async fn commit(
+    model_override: Option<String>,
+    no_verify: bool,
+    yes: bool,
+    rules_file: Option<std::path::PathBuf>,
+) -> Result<()> {
     git::ensure_work_tree()?;
     let diff = git::diff::staged_diff()?;
     let cfg = config::Config::load()?;
     let auto_accept = yes || cfg.auto_accept;
-    let custom_rules = load_system_prompt_file(
+    let custom_rules = resolve_system_prompt_file(
+        rules_file.as_deref(),
         &config::paths::commit_system_prompt_file()?,
         "commit system prompt",
-    );
+    )?;
 
     let messages = commit_msg::prompt::build(&diff, custom_rules.as_deref());
     let raw = generate_text(model_override, messages, "drafting message").await?;
@@ -75,6 +83,7 @@ async fn pull_request(
     yes: bool,
     base: Option<String>,
     source: PrSource,
+    rules_file: Option<std::path::PathBuf>,
 ) -> Result<()> {
     git::ensure_work_tree()?;
     git::pr::ensure_gh_available()?;
@@ -88,8 +97,11 @@ async fn pull_request(
         PrSource::Diff => git::pr::branch_diff(&merge_base)?,
         PrSource::Commits => git::pr::commit_log(&merge_base)?,
     };
-    let custom_rules =
-        load_system_prompt_file(&config::paths::pr_system_prompt_file()?, "PR system prompt");
+    let custom_rules = resolve_system_prompt_file(
+        rules_file.as_deref(),
+        &config::paths::pr_system_prompt_file()?,
+        "PR system prompt",
+    )?;
     let messages =
         pr_msg::prompt::build(source, &base.pr_base, &source_text, custom_rules.as_deref());
     let raw = generate_text(model_override, messages, "drafting PR message").await?;
@@ -106,6 +118,25 @@ async fn pull_request(
 
 fn pr_auto_accept(yes: bool, cfg: &config::Config) -> bool {
     yes || cfg.auto_accept_pr
+}
+
+fn resolve_system_prompt_file(
+    explicit: Option<&std::path::Path>,
+    default: &std::path::Path,
+    label: &str,
+) -> Result<Option<String>> {
+    let Some(path) = explicit else {
+        return Ok(load_system_prompt_file(default, label));
+    };
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| Error::Config(format!("unable to read rules file {}: {e}", path.display())))?;
+    if content.trim().is_empty() {
+        return Err(Error::Config(format!(
+            "rules file {} is empty or whitespace-only",
+            path.display()
+        )));
+    }
+    Ok(Some(content))
 }
 
 fn load_system_prompt_file(path: &std::path::Path, label: &str) -> Option<String> {
@@ -527,6 +558,86 @@ mod tests {
         let mut path = std::env::temp_dir();
         path.push(format!("git-ca-test-{}-{name}", std::process::id()));
         path
+    }
+
+    #[test]
+    fn explicit_rules_replace_defaults_and_preserve_prompt_contracts() {
+        let path = tmp_prompt_file("explicit-rules");
+        let default = tmp_prompt_file("default-rules");
+        let rules = " \n- 規則: custom rule\n\t";
+        std::fs::write(&path, rules).unwrap();
+        std::fs::write(&default, "default-file-rule").unwrap();
+        let loaded = resolve_system_prompt_file(Some(&path), &default, "test").unwrap();
+        assert_eq!(loaded.as_deref(), Some(rules));
+        let source = "source-only-evidence";
+        let commit = commit_msg::prompt::build(source, loaded.as_deref());
+        assert!(commit[0]
+            .content
+            .contains("Follow Conventional Commits strictly"));
+        assert!(!commit[0].content.contains("- subject: imperative mood"));
+        for messages in [
+            commit,
+            pr_msg::prompt::build(PrSource::Diff, "main", source, loaded.as_deref()),
+            pr_msg::prompt::build(PrSource::Commits, "main", source, loaded.as_deref()),
+        ] {
+            assert!(messages[0].content.ends_with(rules));
+            assert!(!messages[0].content.contains("default-file-rule"));
+            assert!(!messages[0].content.contains(source));
+            assert!(!messages[0].content.contains("- title: imperative mood"));
+            assert!(messages[1].content.contains(source));
+            assert!(!messages[1].content.contains(rules));
+            if messages[1].content.contains("Source:") {
+                assert!(messages[0].content.contains("Required JSON shape"));
+            }
+        }
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(default).unwrap();
+    }
+
+    #[test]
+    fn invalid_explicit_rules_fail_with_path_and_never_fall_back() {
+        let path = tmp_prompt_file("invalid-explicit-rules");
+        let default = tmp_prompt_file("valid-default-rules");
+        std::fs::write(&default, "valid default").unwrap();
+        for content in [None, Some(vec![0xff]), Some(b" \n\t".to_vec())] {
+            if let Some(content) = content {
+                std::fs::write(&path, content).unwrap();
+            }
+            let err = resolve_system_prompt_file(Some(&path), &default, "test").unwrap_err();
+            assert!(matches!(err, Error::Config(_)));
+            assert_eq!(err.exit_code(), 1);
+            assert!(err.to_string().contains(&path.display().to_string()));
+        }
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        let err = resolve_system_prompt_file(Some(&path), &default, "test").unwrap_err();
+        assert_eq!(err.exit_code(), 1);
+        assert!(err.to_string().contains(&path.display().to_string()));
+        std::fs::remove_dir(path).unwrap();
+        std::fs::remove_file(default).unwrap();
+    }
+
+    #[test]
+    fn no_explicit_rules_preserve_command_default_and_fallback() {
+        for label in ["commit", "PR"] {
+            let path = tmp_prompt_file(&format!("{label}-default"));
+            assert!(resolve_system_prompt_file(None, &path, label)
+                .unwrap()
+                .is_none());
+            let rules = format!("{label} rules\n");
+            std::fs::write(&path, &rules).unwrap();
+            assert_eq!(
+                resolve_system_prompt_file(None, &path, label).unwrap(),
+                Some(rules)
+            );
+            for content in [b" \n\t".to_vec(), vec![0xff]] {
+                std::fs::write(&path, content).unwrap();
+                assert!(resolve_system_prompt_file(None, &path, label)
+                    .unwrap()
+                    .is_none());
+            }
+            std::fs::remove_file(path).unwrap();
+        }
     }
 
     #[test]

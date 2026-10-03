@@ -100,6 +100,7 @@ git ca pr
 | `git ca pr --base <branch>` | Compare the current branch against a specific PR base branch |
 | `git ca pr --source commits` | Draft PR text from commit messages instead of the branch diff |
 | `git ca --model <id>`, `git ca -m <id>` | Use a specific backend model for this command |
+| `git ca --rules-file <PATH>`, `git ca pr --rules-file <PATH>` | Replace writing rules for this invocation with a UTF-8 file |
 | `git ca --yes`, `git ca -y` | Accept generated text without opening the editor; for PRs this creates or updates the PR directly |
 | `git ca --no-verify` | Pass `--no-verify` through to `git commit` |
 | `git ca auth login` | Prompt for backend on a TTY, then log in (defaults to Copilot when stdin is not a TTY) |
@@ -136,7 +137,7 @@ change: <https://docs.github.com/en/copilot/concepts/billing/copilot-requests#mo
 
 ## Configuration Files
 
-`git-ca` stores configuration under `$XDG_CONFIG_HOME/git-ca` when `XDG_CONFIG_HOME` is set, otherwise under `~/.config/git-ca`:
+`git-ca` stores configuration under `$XDG_CONFIG_HOME/git-ca` when `XDG_CONFIG_HOME` is non-empty, otherwise under `~/.config/git-ca`:
 
 ```text
 ~/.config/git-ca/config.json
@@ -155,8 +156,31 @@ On Unix, the config directory is set to `0700` and JSON files are written with `
 
 ### System prompt overrides
 
-To replace the built-in system prompts, manually create or edit these files: `commit-system-prompt.md` and `pr-system-prompt.md`.
-Missing files are ignored. Empty or unreadable files print a warning and fall back to the built-in prompt.
+Custom files replace only the `Rules` section. Fixed Conventional Commits instructions for commits and the PR role and JSON contract remain. Custom rules replace default writing rules rather than supplementing them; include any writing safeguards you want to keep.
+
+Select rules for one invocation with global `--rules-file <PATH>` (no short alias), before or after `pr`. It applies to PR creation and updates with either source; auth, models, and config commands accept but ignore it.
+
+```sh
+git ca --rules-file ./prompts/commit.md
+git ca pr --rules-file ./prompts/pr.md
+git ca --rules-file ./prompts/pr.md pr
+git ca pr --base develop --source commits --rules-file ./prompts/pr.md -y
+```
+
+For example, a PR rules file can contain:
+
+```markdown
+- Write a concise imperative title.
+- Use Markdown sections: Summary, Changes, Testing.
+- Describe reviewer-relevant risks.
+- Do not invent test results or issue references.
+```
+
+Explicit files take precedence without reading the default file or persisting a setting. Contents are read once as UTF-8 and preserved verbatim. Relative paths resolve from the invocation's working directory, including repository subdirectories; absolute paths work directly. Any extension is accepted. `-` means a literal filename; quoted tilde and interpolation-like text are not expanded by git-ca. There is no stdin or template syntax.
+
+A missing, unreadable, directory, non-UTF-8, empty, or whitespace-only explicit file causes exit 1 with its path and reason, without printing contents or falling back. This stops generation, editor review, commits, and PR creation/updates. Repository, config, and source preconditions may fail first.
+
+Without the flag, commit drafts use `commit-system-prompt.md` and PR drafts use `pr-system-prompt.md` from the config directory above. Each command reads only its own file. Missing files silently use built-in rules. Empty or unreadable files (including invalid UTF-8) warn and fall back to built-in rules.
 
 ## Development
 

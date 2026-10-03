@@ -45,10 +45,10 @@ src/error.rs
 Runtime flow for `git ca`:
 
 1. Read the staged diff with `git diff --cached --no-color -U3`.
-2. Resolve the active account's backend (Copilot or Codex).
-3. Load the persisted default model, unless `--model` was passed; fall back to a backend-specific default (`gpt-4o` for Copilot, `gpt-5.5` for Codex).
+2. Resolve writing rules: read `--rules-file <PATH>` strictly if supplied; otherwise optionally load `commit-system-prompt.md` from the config directory. Invalid explicit input stops before generation or mutations.
+3. Resolve the active account's backend (Copilot or Codex) and persisted default model, unless `--model` was passed; fall back to a backend-specific default (`gpt-4o` for Copilot, `gpt-5.5` for Codex).
 4. For Copilot: refresh the Copilot API token from the stored GitHub token. For Codex: use the cached ChatGPT access token, refreshing via `/oauth/token` on 401.
-5. Load `$XDG_CONFIG_HOME/git-ca/commit-system-prompt.md` or `~/.config/git-ca/commit-system-prompt.md` if present and non-empty, then use it to replace only the built-in prompt's `Rules` section; otherwise use the full built-in Conventional Commits prompt.
+5. Build the prompt with resolved rules replacing only the `Rules` section, retaining fixed Conventional Commits instructions and a separate staged-diff message. If no custom rules resolved, use built-in rules.
 6. Send the chat request - chat-completions for Copilot, Responses-API streamed over SSE for Codex.
 7. Strip an accidental outer code fence from the model response.
 8. Write `.git/COMMIT_EDITMSG`.
@@ -60,13 +60,17 @@ Runtime flow for `git ca pr`:
 1. Resolve the base branch from `--base`, else `origin/HEAD`, else `main`.
 2. Resolve `git merge-base <base> HEAD`.
 3. Read either `git diff --no-color -U3 <merge-base>...HEAD` or `git log --no-merges --format=%s%n%n%b <merge-base>..HEAD`.
-4. Resolve the active account's backend and model the same way `git ca` does.
-5. Load `$XDG_CONFIG_HOME/git-ca/pr-system-prompt.md` or `~/.config/git-ca/pr-system-prompt.md` if present and non-empty, then use it to replace only the built-in prompt's `Rules` section; otherwise use the full built-in PR prompt.
+4. Resolve writing rules: read `--rules-file <PATH>` strictly if supplied; otherwise optionally load `pr-system-prompt.md` from the config directory. Build the prompt with only the `Rules` section replaced, retaining the PR role and JSON contract and a separate source message for either diff or commits.
+5. Resolve the active account's backend and model the same way `git ca` does.
 6. Ask the backend for compact JSON containing `title` and `body`.
 7. Parse and validate the generated PR text.
 8. Unless `--yes` / `-y` or `config.auto_accept_pr` is enabled, write `.git/PULL_REQUEST_EDITMSG`, open the configured Git editor, and read back the edited title/body.
 9. If an open PR exists for the current branch, write `.git/PULL_REQUEST_BODY` and run `gh pr edit --title <title> --body-file <path>`.
 10. Otherwise, write `.git/PULL_REQUEST_BODY`, push the current branch with `git push --set-upstream origin HEAD:refs/heads/<branch>`, and run `gh pr create --base <base> --head <branch> --title <title> --body-file <path>`. Push failures stop creation; `--head` disables GitHub CLI's implicit pushing and repository forking.
+
+Both commands share one resolver. Explicit paths override defaults without reading them or persisting settings. Files are read once as UTF-8 with valid contents preserved verbatim. Relative paths use the invocation's working directory (including subdirectories); absolute paths work directly. No extension restriction, tilde expansion, interpolation, or stdin syntax applies: `-` is a literal filename. Missing, unreadable, directory, invalid UTF-8, empty, and whitespace-only explicit files produce path-bearing exit-1 diagnostics without contents or fallback, before generation/editor/Git/gh mutation paths. Repository, configuration, and source preconditions may fail first.
+
+Without `--rules-file`, each command reads only its own default under `$XDG_CONFIG_HOME/git-ca` when XDG is non-empty, otherwise `~/.config/git-ca`. Missing defaults silently use built-in rules; empty or unreadable defaults warn and use built-in rules. The global flag has no short alias; it works before or after `pr`, for creation and updates, and is ignored by auth, models, and config. Examples: `git ca --rules-file ./prompts/commit.md`, `git ca pr --source commits --rules-file ./prompts/pr.md`, and `git ca --rules-file ./prompts/pr.md pr`. Custom rules replace defaults, so include safeguards such as not inventing test results or issue references.
 
 ## Codex Backend Caveat
 

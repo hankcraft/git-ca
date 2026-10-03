@@ -42,6 +42,29 @@ account's backend. Overrides the persisted default model.
 Accept generated text without opening the editor. For commits, this commits
 directly. For pull requests, this creates or updates the pull request directly.
 .TP
+.BI "\--rules-file " PATH
+Replace only writing rules with a UTF-8 file for this invocation. Fixed
+Conventional Commits instructions and the PR role and JSON contract remain.
+Custom rules replace default rules; include any writing safeguards to retain,
+such as not inventing test results or issue references.
+The explicit file overrides the command's default without reading it or
+persisting a setting. This global option has no short alias and works before
+or after
+.BR pr ,
+with either source, for PR creation and updates. Auth, models, and config
+commands accept but ignore it.
+.PP
+Rules files are read once; valid contents are preserved verbatim.
+Relative paths resolve from the invocation's working directory, including
+repository subdirectories; absolute paths work directly. Any extension is
+accepted. No tilde expansion, interpolation, or stdin syntax applies;
+.B \-
+is a literal filename.
+Missing, unreadable, directory, non-UTF-8, empty, or whitespace-only explicit
+files cause exit 1 with a path and reason, without contents or fallback,
+before generation, editor review, commits, or PR creation/updates.
+Repository, configuration, and source preconditions may fail first.
+.TP
 .BR \-h , " \--help"
 Print command help when the binary is invoked directly or through
 .BR "git ca \-h" .
@@ -140,6 +163,18 @@ Draft a commit message and open the editor:
 Draft with a specific model:
 .B git ca \-m gpt-4o
 .TP
+Draft with invocation-specific commit rules:
+.B git ca \--rules-file ./prompts/commit.md
+.TP
+Draft with invocation-specific PR rules:
+.B git ca pr \--rules-file ./prompts/pr.md
+.TP
+Place the global option before the PR command:
+.B git ca \--rules-file ./prompts/pr.md pr
+.TP
+Draft from commit messages with custom PR rules:
+.B git ca pr \--source commits \--rules-file ./prompts/pr.md
+.TP
 Commit the generated message directly:
 .B git ca \--yes
 .TP
@@ -152,6 +187,15 @@ Create or update the generated pull request directly:
 Show clap-generated help instead of this manual page:
 .B git ca \-h
 .SH FILES
+When XDG_CONFIG_HOME is non-empty, the config directory is
+.IR $XDG_CONFIG_HOME/git-ca ;
+otherwise it is
+.IR ~/.config/git-ca .
+Without
+.BR \--rules-file ,
+each drafting command reads only its own default rules file.
+Missing defaults silently use built-in rules; empty or unreadable defaults
+(including invalid UTF-8) warn and use built-in rules.
 .TP
 .I ~/.config/git-ca/config.json
 User preferences, including default model and commit/PR auto-accept behavior.
