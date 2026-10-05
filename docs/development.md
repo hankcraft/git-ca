@@ -127,74 +127,98 @@ Validate changes and specs with `openspec validate --all --strict`.
 
 Releases are built by cargo-dist and can be published either from GitHub Actions or from a local maintainer machine.
 
-### GitHub Actions Release
+### Reviewed GitHub Actions Release
 
-Push a version tag to publish GitHub Release artifacts, crates.io, Homebrew, and npm from CI.
+On `main` pushes, CI runs formatting, Clippy, tests, and release metadata checks
+on the event SHA. Only after `checks` succeeds does release orchestration run.
+Release-plz maintains one release PR with `Cargo.toml`, `Cargo.lock`, and
+`CHANGELOG.md` updates; automation then synchronizes the manual header. Review
+and merge that PR to approve the release. Both merge commits and squash merges
+are supported; keep ordinary squash commit messages in Conventional Commit
+format so version proposals reflect their changes.
 
-### Bump Version
+`release-plz.toml` uses existing `v*` tags as its baseline. Fixes propose patch
+bumps; features and breaking changes propose minor bumps while versions are
+`0.x`. Review breaking changes and adjust the proposed version if needed.
+Third-party lockfile versions are retained. Release-plz's registry publishing,
+GitHub Release creation, and automatic tagging are disabled; orchestration runs
+only `release-pr`, never `release-plz release`.
 
-Use `cargo-release` to bump `Cargo.toml`, refresh `Cargo.lock`, update the manual page header, create the version commit, and create the matching `v*` tag. The project release settings live in `release.toml`.
+The tag helper queries PRs associated with the checked SHA and requires one
+merged PR targeting `main`, authored by the release App bot, with a
+same-repository `release-plz-` head branch and a matching `merge_commit_sha`.
+It pushes `v<Cargo.toml version>` at that exact checked SHA, including the merge
+commit itself. Ordinary pushes and unmerged release branches create no tag.
+Existing lightweight or annotated tags are accepted only if their peeled commit
+matches; a conflicting target fails without moving the tag.
 
-Install the release helper once:
+Orchestration is serialized with `cancel-in-progress: false` and `queue: max`.
+GitHub permits at most 100 pending runs; monitor canceled runs and rerun a
+missed release merge's CI run rather than tagging a newer `main` commit.
 
-```sh
-cargo install cargo-release
-```
+### Repository Setup and Cutover
 
-Preview a patch release without writing changes:
+A maintainer must perform the following setup; committing these files does not
+change GitHub settings, branch protection, or secrets:
 
-```sh
-cargo release patch
-```
+1. Reconcile pending `dev` work into `main`, then change the default branch to
+   `main`. Retain `dev` until its work is accounted for; do not delete branches
+   as part of this migration. Release-plz uses the default branch for its PRs.
+2. Create and install a GitHub App restricted to this repository, with
+   **Contents: read and write** and **Pull requests: read and write**. Metadata
+   read access is implicit. Do not grant protected-branch bypass.
+3. Add Actions secrets `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY`. Jobs mint
+   short-lived installation tokens. App-authenticated branch and tag pushes
+   trigger CI and cargo-dist; the default `GITHUB_TOKEN` suppresses these events.
+4. Protect `main` with required status check `checks`, successful reviews, and
+   no automatic merging. CI checks the PR merge result and rechecks the actual
+   `main` event SHA before tagging. Keep the App off bypass lists.
+5. Verify preparation, PR updates, merge gating, exact tag SHA, bot-triggered
+   checks/distribution, and reruns in a disposable repository with dummy
+   publishers before enabling production automation. Never copy publisher
+   credentials or the production publishing workflows to the test repository.
+6. Review the first generated release PR, including version, changelog, lockfile,
+   and manual. Merging it after setup authorizes the automated tag and publishing.
 
-Create the version commit and tag:
+### Local Preparation and Validation
 
-```sh
-cargo release patch --execute
-```
-
-Use `minor`, `major`, or an exact SemVer version when needed:
-
-```sh
-cargo release minor --execute
-cargo release major --execute
-cargo release 0.2.0 --execute
-```
-
-`cargo-release` runs `cargo check` before committing so `Cargo.lock` is included when the package version changes. It also updates `docs/man/git-ca.1` from this template:
-
-```roff
-.TH GIT-CA 1 "{{date}}" "git-ca {{version}}" "User Commands"
-```
-
-The generated tag uses `v{{version}}`, which is the tag format cargo-dist uses for GitHub Actions releases. `release.toml` keeps `publish = false` and `push = false` so publishing stays in GitHub Actions and the maintainer explicitly pushes the release tag.
-
-Do not reuse a version already published to crates.io or npm. Published package versions are immutable.
-
-Release checklist:
-
-1. Run `cargo release patch`, `cargo release minor`, or `cargo release <version>` and inspect the dry-run output.
-2. Run `cargo release patch --execute`, `cargo release minor --execute`, or `cargo release <version> --execute`.
-3. Run `cargo fmt --check`.
-4. Run `cargo clippy --all-targets --all-features -- -D warnings`.
-5. Run `cargo test`.
-6. Run `cargo publish --dry-run --locked`.
-7. Run `dist plan --allow-dirty`.
-8. Build the release binary locally if you want an extra smoke test:
-
-```sh
-cargo build --release
-target/release/git-ca --help
-target/release/git-ca auth --help
-target/release/git-ca config --help
-```
-
-9. Push the version commit and matching tag:
+Install the same preparation tool used by CI:
 
 ```sh
-git push origin main
-git push origin v0.2.0
+cargo install release-plz --version 0.3.169 --locked
 ```
+
+To inspect version proposals locally, use an isolated clean checkout of `main`
+with all tags fetched. These commands write version, lockfile, changelog, and
+manual updates but do not tag or publish:
+
+```sh
+release-plz update
+python3 scripts/release-metadata.py
+```
+
+Before approving a release, run:
+
+```sh
+python3 scripts/test-release-metadata.py
+python3 scripts/test-tag-release.py
+python3 scripts/release-metadata.py --check
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+cargo publish --dry-run --locked
+dist plan --allow-dirty
+```
+
+The metadata helper fails on missing, duplicate, or malformed manual headers,
+invalid dates, and disagreement between the manifest and lockfile. It preserves
+unrelated manual content and preserves the preparation date on unchanged reruns.
+CI uses `--check`, which never writes files. Validate workflows with actionlint;
+versions lacking GitHub's `concurrency.queue` schema need the narrow exclusion
+`-ignore 'unexpected key "queue" for "concurrency" section'` until updated.
+
+Do not reuse a version already published to crates.io or npm. Published package
+versions are immutable.
 
 The release workflow uploads archives and checksums to GitHub Releases, then runs cargo-dist custom publish jobs for crates.io, Homebrew, and npm. Keep these jobs configured through `dist-workspace.toml` instead of editing the generated `.github/workflows/release.yml` directly:
 
@@ -221,9 +245,30 @@ npm publishing uses npm Trusted Publishing with GitHub Actions OIDC, not `NPM_TO
 
 The publish command lives in the reusable `.github/workflows/publish-npm.yml` workflow, but cargo-dist calls it from `.github/workflows/release.yml`. npm validates the calling workflow for `workflow_call` publishes, so the trusted publisher must use `release.yml`.
 
+### Failed Release Recovery
+
+A tag can exist even when distribution fails. Inspect the tagged SHA, metadata,
+GitHub Actions logs, GitHub Release assets, and all three published channels
+before retrying. For a transient failure, rerun only failed jobs in the original
+`release.yml` run (`gh run rerun <run-id> --failed`); do not re-push or move the tag.
+Rerunning the merge CI run accepts its existing matching tag but does not emit
+another tag push, so it does not restart distribution.
+
+If a channel already published, keep its immutable version and artifacts.
+Recover missing channels with the original tagged checkout and the local
+fallback below, skipping successful channels. Inspect existing GitHub assets
+before uploading; do not replace released artifacts with rebuilt, changed code.
+If a code fix is needed, prepare a new version through another reviewed release
+PR instead of reusing the failed release's version.
+
+To roll back automation, disable the CI release job and revert its configuration
+and orchestration commits. Retain historical tags and published versions. The
+explicit local distribution fallback remains available without another version
+manager.
+
 ### Local Release
 
-Use the local release script when you want to publish from your own machine instead of relying on GitHub Actions. It defaults to a dry run and requires `--execute` before creating or publishing anything.
+Use the local release script as an explicit maintainer fallback from a clean checkout of the original release tag. Run `python3 scripts/release-metadata.py --check` first; the script does not manage versions. It defaults to a dry run and requires `--execute` before creating or publishing anything.
 
 Dry-run the local release checks:
 
