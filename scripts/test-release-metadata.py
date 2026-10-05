@@ -2,10 +2,13 @@
 """Release PR metadata must agree without rewriting unrelated manual content."""
 
 import datetime
+import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import textwrap
 
 helper = Path(__file__).with_name("release-metadata.py").resolve()
 with tempfile.TemporaryDirectory() as directory:
@@ -42,4 +45,53 @@ with tempfile.TemporaryDirectory() as directory:
     lock.write_text(lock.read_text().replace("0.3.0", "0.2.6"))
     assert run("--check").returncode != 0, "A stale lockfile must block release checks"
     assert run().returncode != 0, "Preparation must not conceal a stale lockfile"
+
+# Exercise the actual workflow against a local remote: metadata belongs in the
+# release commit, and reruns must leave that commit untouched.
+workflow = helper.parent.parent / ".github/workflows/release-plz.yml"
+step = workflow.read_text().split("      - name: Synchronize release PR metadata\n", 1)[1]
+commands = textwrap.dedent(step.split("        run: |\n", 1)[1])
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory) / "checkout"
+    root.mkdir()
+    remote = Path(directory) / "remote.git"
+    branch = "release-plz-test"
+    env = dict(os.environ, PR=json.dumps({"head_branch": branch}), RELEASE_BOT="release-test[bot]")
+    env.update(GIT_AUTHOR_NAME="Release author", GIT_AUTHOR_EMAIL="author@example.com",
+               GIT_COMMITTER_NAME="Release committer", GIT_COMMITTER_EMAIL="committer@example.com")
+
+    def git(*args):
+        return subprocess.check_output(["git", *args], cwd=root, env=env, stderr=subprocess.PIPE).decode().strip()
+
+    git("init", "--bare", str(remote))
+    git("init", "-b", branch)
+    git("remote", "add", "origin", str(remote))
+    (root / "README.md").write_text("Base commit\n")
+    git("add", ".")
+    git("commit", "-m", "Initial commit")
+    (root / "scripts").mkdir()
+    (root / "scripts/release-metadata.py").write_bytes(helper.read_bytes())
+    (root / "Cargo.toml").write_text('[package]\nname = "git-ca"\nversion = "0.3.0"\n')
+    (root / "Cargo.lock").write_text('[[package]]\nname = "git-ca"\nversion = "0.3.0"\n')
+    man = root / "docs/man/git-ca.1"
+    man.parent.mkdir(parents=True)
+    man.write_text(old + body)
+    git("add", ".")
+    git("commit", "-m", "chore: release v0.3.0")
+    git("push", "origin", branch)
+    original = git("rev-parse", "HEAD")
+    identity = git("show", "-s", "--format=%P%n%B%n%an <%ae>", "HEAD")
+
+    def synchronize():
+        subprocess.run(["bash", "-e", "-o", "pipefail", "-c", commands], cwd=root, env=env,
+                       check=True, capture_output=True)
+
+    synchronize()
+    amended = git("rev-parse", "HEAD")
+    assert amended != original and git("rev-list", "--count", "HEAD") == "2", "Metadata must amend, not append a commit"
+    assert git("show", "-s", "--format=%P%n%B%n%an <%ae>", "HEAD") == identity, "Preserve release parent, message, and author"
+    assert git("ls-remote", "origin", f"refs/heads/{branch}").split()[0] == amended, "Push the amended release commit"
+    assert '"git-ca 0.3.0"' in man.read_text()
+    synchronize()
+    assert git("rev-parse", "HEAD") == amended, "A no-op rerun must not rewrite the release commit"
 print("release metadata checks passed")
