@@ -1,7 +1,7 @@
 ## 1. Release configuration and metadata
 
-- [ ] 1.1 Add release-plz configuration from design.md; verify it reads existing `v*` tags, proposes expected `0.x` bumps, and disables its registry/GitHub Release publishers and automatic tags.
-- [ ] 1.2 Implement man-page update/check helper and one runnable check covering mismatched versions, unchanged reruns, and missing/duplicate headers; verify unrelated content is preserved and lockfile version agrees.
+- [x] 1.1 Add release-plz configuration from design.md; verify it reads existing `v*` tags, proposes expected `0.x` bumps, and disables its registry/GitHub Release publishers and automatic tags.
+- [x] 1.2 Implement man-page update/check helper and one runnable check covering mismatched versions, unchanged reruns, and missing/duplicate headers; verify unrelated content is preserved and lockfile version agrees.
 
 ## 2. CI and release orchestration
 
