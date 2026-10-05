@@ -2,10 +2,17 @@
 Cargo.lock.bak
 
 # Claude Code / workspace artifacts
-/.agents/
+/.agents/*
+!/.agents/skills/
+/.agents/skills/*
+!/.agents/skills/.openspec-target
+!/.agents/skills/openspec-*/
 /.claude/
 /.codex
 /docs/superpowers/
 /skills-lock.json
 .env*
 !.env.example
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
