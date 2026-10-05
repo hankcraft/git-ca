@@ -28,6 +28,11 @@ The system SHALL create `vX.Y.Z` only for a merged release PR after formatting, 
 #### Scenario: Release PR merges successfully
 - **WHEN** a release PR merges into `main` and its resulting commit passes required checks
 - **THEN** automation tags that commit with its package version
+- **AND** for a merge commit, the tag identifies the checked merge commit, not the release branch head
+
+#### Scenario: Associated PR does not prove a release merge
+- **WHEN** no unique merged PR has the checked SHA as its merge commit, the release App as its author, `main` as its base, and a same-repository `release-plz-` head branch
+- **THEN** automation creates no release tag
 
 #### Scenario: Checks fail or an ordinary PR merges
 - **WHEN** required checks fail or the merged change is not a release PR

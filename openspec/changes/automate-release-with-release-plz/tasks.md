@@ -1,12 +1,12 @@
 ## 1. Release configuration and metadata
 
-- [ ] 1.1 Add release-plz configuration from design.md; verify it reads existing `v*` tags, proposes expected `0.x` bumps, and disables its registry/GitHub Release publishers.
+- [ ] 1.1 Add release-plz configuration from design.md; verify it reads existing `v*` tags, proposes expected `0.x` bumps, and disables its registry/GitHub Release publishers and automatic tags.
 - [ ] 1.2 Implement man-page update/check helper and one runnable check covering mismatched versions, unchanged reruns, and missing/duplicate headers; verify unrelated content is preserved and lockfile version agrees.
 
 ## 2. CI and release orchestration
 
 - [ ] 2.1 Add required PR/main checks for formatting, Clippy, tests, and metadata; verify a deliberate mismatch fails and a synchronized release PR passes.
-- [ ] 2.2 Add App-authenticated, serialized release-plz workflow pinned to the event SHA, with post-PR metadata reconciliation; verify workflow syntax and preparation/update behavior without publishing.
+- [ ] 2.2 Add App-authenticated, serialized workflow pinned to the event SHA, with explicit merged-release-PR validation, immutable merge-SHA tagging, and post-PR metadata reconciliation; verify workflow syntax and preparation/update behavior without publishing.
 - [ ] 2.3 Verify in a disposable repository with dummy publishers that ordinary PRs/failing checks create no tag, release PR merges tag the checked SHA, bot pushes trigger checks/distribution, and reruns preserve tags or fail on conflicting targets.
 
 ## 3. Migration and documentation

@@ -7,6 +7,7 @@ Version preparation currently uses cargo-release on a maintainer checkout, while
 - Replace cargo-release and `release.toml` with release-plz configuration and GitHub Actions orchestration targeting `main`.
 - Maintain one release PR containing proposed version, lockfile, changelog, and synchronized man-page metadata; retain maintainer review and merge as the release decision.
 - Require formatting, Clippy, tests, and metadata consistency before release; create tags only after the release PR merges and checks succeed for that commit.
+- Use release-plz only for PR preparation; explicitly tag the checked merge or squash commit after verifying the merged App-authored release PR.
 - Retain cargo-dist and its existing GitHub Release, crates.io, npm, and Homebrew publishing jobs.
 - Document GitHub App authentication, required checks, default-branch cutover, migration, and recovery from failed publishing.
 
