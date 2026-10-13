@@ -15,3 +15,9 @@ impl std::fmt::Display for ReasoningEffort {
         f.write_str(self.to_possible_value().unwrap().get_name())
     }
 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct InferenceOptions {
+    pub fast: Option<bool>,
+    pub reasoning: Option<ReasoningEffort>,
+}

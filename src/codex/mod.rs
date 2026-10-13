@@ -6,7 +6,7 @@ pub mod sse;
 
 pub use chat::FALLBACK_MODEL;
 pub use client::Client;
-pub use inference::ReasoningEffort;
+pub use inference::{InferenceOptions, ReasoningEffort};
 
 use std::time::Duration;
 

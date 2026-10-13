@@ -26,6 +26,10 @@ struct RefreshResp {
 /// Force a refresh of the active Codex account's access token. Persists the
 /// rotated tokens so subsequent calls keep working.
 pub async fn refresh(http: &reqwest::Client, file: &mut AuthFile) -> Result<String> {
+    #[cfg(test)]
+    if let Ok(base) = std::env::var("GIT_CA_TEST_CODEX_ISSUER") {
+        return refresh_with_base(http, &base, file).await;
+    }
     refresh_with_base(http, ISSUER_BASE, file).await
 }
 
