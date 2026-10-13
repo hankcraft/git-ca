@@ -38,6 +38,20 @@ Skip pre-commit and commit-msg hooks.
 Use a specific model id for drafting. The id must be valid for the active
 account's backend. Overrides the persisted default model.
 .TP
+.B \--fast[=true|false]
+Choose Codex Fast processing (increased usage; requires model/account support).
+Bare \--fast means true; false explicitly selects Standard processing.
+Speed tier and reasoning depth are independent.
+.TP
+.BI "\--reasoning " low|medium|high|xhigh
+Choose Codex reasoning depth, subject to model support.
+Both inference options are global and work before or after pr, for commit and
+PR creation or updates with either source. Each flag overrides only its saved
+setting without persisting. Unset controls use backend defaults; backend
+rejections are reported without silently changing settings.
+Copilot drafting rejects explicit inference flags but ignores saved Codex
+preferences. Auth, models, and config accept and ignore valid inference flags.
+.TP
 .BR \-y , " \--yes"
 Accept generated text without opening the editor. For commits, this commits
 directly. For pull requests, this creates or updates the pull request directly.
@@ -175,6 +189,19 @@ Persist whether generated pull requests are created without opening the editor.
 .TP
 .B config get-auto-accept-pr
 Print the persisted PR auto-accept setting.
+.TP
+.BI "config set-codex-fast " true|false
+Persist Codex Fast or Standard processing. Fast increases usage and requires
+model/account support.
+.TP
+.B config get-codex-fast
+Print Codex fast processing preference, or default (backend) when unset.
+.TP
+.BI "config set-codex-reasoning " low|medium|high|xhigh|default
+Persist Codex reasoning depth. Use default to remove its override.
+.TP
+.B config get-codex-reasoning
+Print Codex reasoning preference, or default (backend) when unset.
 .SH EXAMPLES
 .TP
 Draft a commit message and open the editor:
@@ -182,6 +209,15 @@ Draft a commit message and open the editor:
 .TP
 Draft with a specific model:
 .B git ca \-m gpt-4o
+.TP
+Use Codex Fast processing (increased usage) and low reasoning:
+.B git ca \--fast \--reasoning low
+.TP
+Override saved fast mode for one PR draft:
+.B git ca pr \--fast=false \--reasoning high
+.TP
+Restore backend reasoning default:
+.B git ca config set-codex-reasoning default
 .TP
 Draft with invocation-specific commit rules:
 .B git ca \--rules-file ./prompts/commit.md
@@ -221,6 +257,9 @@ Missing defaults silently use built-in rules; empty or unreadable defaults
 .TP
 .I ~/.config/git-ca/config.json
 User preferences, including default model and commit/PR auto-accept behavior.
+Optional codex_fast and codex_reasoning fields configure Codex inference.
+Missing values display as default (backend) in config list and omit request
+fields. These preferences are independent of Codex CLI configuration.
 .TP
 .I ~/.config/git-ca/auth.json
 Local credential cache. Each account is tagged with its provider; Copilot

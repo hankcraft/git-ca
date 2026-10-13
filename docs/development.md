@@ -80,6 +80,30 @@ The Codex backend talks to `https://chatgpt.com/backend-api/codex/responses`, wh
 
 ## Development Flow
 
+Commit and PR drafting share inference resolution in `generate_text`: each
+global `--fast[=true|false]` / `--reasoning <low|medium|high|xhigh>` flag overrides
+its corresponding optional `codex_fast` / `codex_reasoning` config field.
+Unset controls omit request fields; true/false fast mode sends
+`service_tier: "priority"` / `"default"`, and reasoning sends `reasoning.effort`.
+Resolved options are copied into the authenticated call closure, preserving
+both values through 401 refresh and transient retries. Invocation flags do not
+save config; `config set-codex-reasoning default` removes its saved override.
+Getters and config list show missing settings as `default (backend)`.
+
+Fast processing increases usage and needs model/account support; effort levels
+are model-dependent. Speed and depth remain independent. The backend validates
+availability without local catalog gating, preserving explicit hidden slugs.
+Copilot rejects explicit inference flags before generation and ignores saved
+Codex settings. Auth, models, and config ignore valid flags. Editor/output
+contracts remain shared across commit and PR create/update paths with both sources.
+
+Inference tests cover CLI/config compatibility and permissions, per-field
+precedence, request omission and combinations, and isolated child-process
+drafting with fake Git/gh/editor commands. Test-only endpoint overrides route
+Codex generation and token refresh to wiremock; release binaries do not expose
+these overrides. Tests include retry preservation and backend rejection without
+fallback. No paid live generation is required.
+
 Enable the project Git hooks once per checkout:
 
 ```sh

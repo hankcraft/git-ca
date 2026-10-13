@@ -100,6 +100,8 @@ git ca pr
 | `git ca pr --base <branch>` | Compare the current branch against a specific PR base branch |
 | `git ca pr --source commits` | Draft PR text from commit messages instead of the branch diff |
 | `git ca --model <id>`, `git ca -m <id>` | Use a specific backend model for this command |
+| `git ca --fast[=true\|false]` | Choose Codex fast processing; increased usage, subject to model/account support |
+| `git ca --reasoning <low\|medium\|high\|xhigh>` | Choose Codex reasoning depth, subject to model support |
 | `git ca --rules-file <PATH>`, `git ca pr --rules-file <PATH>` | Replace writing rules for this invocation with a UTF-8 file |
 | `git ca --yes`, `git ca -y` | Accept generated text without opening the editor; for PRs this creates or updates the PR directly |
 | `git ca --no-verify` | Pass `--no-verify` through to `git commit` |
@@ -120,6 +122,10 @@ git ca pr
 | `git ca config get-auto-accept` | Print the persisted commit auto-accept setting |
 | `git ca config set-auto-accept-pr <true|false>` | Persist whether generated PRs are created without opening the editor |
 | `git ca config get-auto-accept-pr` | Print the persisted PR auto-accept setting |
+| `git ca config set-codex-fast <true\|false>` | Persist Codex fast processing preference |
+| `git ca config get-codex-fast` | Print Codex fast processing preference |
+| `git ca config set-codex-reasoning <low\|medium\|high\|xhigh\|default>` | Persist reasoning depth, or reset to backend default |
+| `git ca config get-codex-reasoning` | Print Codex reasoning preference |
 
 `auth logout` only removes local credentials. Revoke the OAuth grant separately from GitHub account settings if the server-side grant should be invalidated.
 
@@ -153,6 +159,37 @@ On Unix, the config directory is set to `0700` and JSON files are written with `
 - **default_model**: The default model to use for `git ca` and `git ca pr`.
 - **auto_accept**: Whether to automatically accept generated commit messages.
 - **auto_accept_pr**: Whether to automatically accept generated PR messages.
+- **codex_fast**: Optional boolean selecting Codex Fast (`true`) or Standard (`false`) processing.
+- **codex_reasoning**: Optional Codex reasoning effort: `low`, `medium`, `high`, or `xhigh`.
+
+### Codex speed and reasoning
+
+Fast mode increases usage and requires model/account support. Reasoning levels
+also depend on the model. Speed tier and reasoning depth are independent;
+backend rejections surface as errors without silently changing either setting.
+
+```sh
+git ca --fast --reasoning low
+git ca pr --fast=true --reasoning high
+git ca --reasoning xhigh pr --source commits
+git ca config set-codex-fast true
+git ca --fast=false # Use Standard for this draft, keeping saved fast mode
+git ca config set-codex-reasoning medium
+git ca config set-codex-reasoning default # Remove reasoning override
+```
+
+Both flags are global: use them before or after `pr` for creation or updates
+with either source. Each flag overrides only its corresponding saved setting
+for one invocation; flags never persist. `--fast` means `--fast=true`;
+`--fast=false` explicitly selects Standard processing. Saved fast mode can be
+disabled with `config set-codex-fast false`.
+
+Missing settings display as `default (backend)` and omit their request fields,
+preserving backend defaults. Fast mode maps to `service_tier: "priority"`,
+false maps to `"default"`, and reasoning maps to `reasoning.effort`. These
+settings are independent of Codex CLI configuration. Copilot drafting rejects
+explicit flags but ignores saved Codex preferences. Auth, models, and config
+commands accept and ignore valid inference flags.
 
 ### System prompt overrides
 
