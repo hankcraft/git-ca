@@ -48,6 +48,10 @@ async fn run(cli: Cli) -> Result<()> {
             ConfigAction::GetAutoAccept => config_get_auto_accept().await,
             ConfigAction::SetAutoAcceptPr { value } => config_set_auto_accept_pr(value).await,
             ConfigAction::GetAutoAcceptPr => config_get_auto_accept_pr().await,
+            ConfigAction::SetCodexFast { value } => config_set_codex_fast(value).await,
+            ConfigAction::GetCodexFast => config_get_codex_fast().await,
+            ConfigAction::SetCodexReasoning { value } => config_set_codex_reasoning(&value).await,
+            ConfigAction::GetCodexReasoning => config_get_codex_reasoning().await,
         },
     }
 }
@@ -468,7 +472,55 @@ fn config_list_lines(cfg: &config::Config) -> Vec<String> {
     }
     lines.push(format!("auto_accept: {}", cfg.auto_accept));
     lines.push(format!("auto_accept_pr: {}", cfg.auto_accept_pr));
+    lines.push(format!("codex_fast: {}", config_default(cfg.codex_fast)));
+    lines.push(format!(
+        "codex_reasoning: {}",
+        config_default(cfg.codex_reasoning)
+    ));
     lines
+}
+
+fn config_default(value: Option<impl std::fmt::Display>) -> String {
+    value
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "default (backend)".into())
+}
+
+async fn config_set_codex_fast(value: bool) -> Result<()> {
+    let mut cfg = config::Config::load()?;
+    cfg.codex_fast = Some(value);
+    cfg.save()?;
+    println!("Codex fast processing set to {value}.");
+    Ok(())
+}
+
+async fn config_get_codex_fast() -> Result<()> {
+    println!("{}", config_default(config::Config::load()?.codex_fast));
+    Ok(())
+}
+
+async fn config_set_codex_reasoning(value: &str) -> Result<()> {
+    let reasoning = if value == "default" {
+        None
+    } else {
+        Some(
+            <codex::ReasoningEffort as clap::ValueEnum>::from_str(value, false)
+                .map_err(Error::Config)?,
+        )
+    };
+    let mut cfg = config::Config::load()?;
+    cfg.codex_reasoning = reasoning;
+    cfg.save()?;
+    println!("Codex reasoning set to {}.", config_default(reasoning));
+    Ok(())
+}
+
+async fn config_get_codex_reasoning() -> Result<()> {
+    println!(
+        "{}",
+        config_default(config::Config::load()?.codex_reasoning)
+    );
+    Ok(())
 }
 
 async fn config_set_model(id: &str) -> Result<()> {
@@ -544,6 +596,7 @@ mod tests {
             default_model: None,
             auto_accept: false,
             auto_accept_pr: false,
+            ..Default::default()
         };
 
         assert_eq!(
@@ -552,6 +605,8 @@ mod tests {
                 format!("default_model: {} (fallback)", commit_msg::FALLBACK_MODEL),
                 "auto_accept: false".to_string(),
                 "auto_accept_pr: false".to_string(),
+                "codex_fast: default (backend)".to_string(),
+                "codex_reasoning: default (backend)".to_string(),
             ]
         );
     }
@@ -562,6 +617,7 @@ mod tests {
             default_model: None,
             auto_accept: true,
             auto_accept_pr: false,
+            ..Default::default()
         };
 
         assert!(!pr_auto_accept(false, &cfg));
@@ -571,6 +627,7 @@ mod tests {
             default_model: None,
             auto_accept: false,
             auto_accept_pr: true,
+            ..Default::default()
         };
 
         assert!(pr_auto_accept(false, &cfg));

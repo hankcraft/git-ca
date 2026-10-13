@@ -1,6 +1,6 @@
 ## 1. Settings and CLI
 
-- [ ] 1.1 Add typed inference settings, global flags, optional config fields, set/get/reset commands, and config-list output; verify CLI placement, invalid values, legacy config loading, round trips, and file permissions with focused tests.
+- [x] 1.1 Add typed inference settings, global flags, optional config fields, set/get/reset commands, and config-list output; verify CLI placement, invalid values, legacy config loading, round trips, and file permissions with focused tests.
 
 ## 2. Generation and transport
 
