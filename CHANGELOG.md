@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/hankcraft/git-ca/compare/v0.3.0...v0.4.0) - 2026-10-14
+
+### Added
+
+- *(codex)* apply inference controls to commit and PR drafts
+- *(config)* add Codex inference flags and saved defaults
+
+### Other
+
+- *(codex)* explain inference controls and record validation
+- *(openspec)* propose Codex inference controls
+
 ## [0.3.0](https://github.com/hankcraft/git-ca/compare/v0.2.6...v0.3.0) - 2026-10-05
 
 ### Added
