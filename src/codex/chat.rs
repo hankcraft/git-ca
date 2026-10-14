@@ -16,6 +16,10 @@ pub const FALLBACK_MODEL: &str = "gpt-5.5";
 #[derive(Debug, Serialize)]
 struct ResponsesRequest<'a> {
     model: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    service_tier: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning: Option<Reasoning>,
     #[serde(skip_serializing_if = "str::is_empty")]
     instructions: &'a str,
     input: Vec<InputItem<'a>>,
@@ -26,6 +30,11 @@ struct ResponsesRequest<'a> {
     store: bool,
     include: [(); 0],
     client_metadata: ClientMetadata<'a>,
+}
+
+#[derive(Debug, Serialize)]
+struct Reasoning {
+    effort: super::ReasoningEffort,
 }
 
 #[derive(Debug, Serialize)]
@@ -84,10 +93,19 @@ struct FailedError {
 }
 
 impl Client {
-    pub async fn chat(&self, model: &str, messages: &[ChatMessage]) -> Result<String> {
+    pub async fn chat(
+        &self,
+        model: &str,
+        messages: &[ChatMessage],
+        inference: super::InferenceOptions,
+    ) -> Result<String> {
         let (instructions, input) = build_input(messages);
         let req = ResponsesRequest {
             model,
+            service_tier: inference
+                .fast
+                .map(|fast| if fast { "priority" } else { "default" }),
+            reasoning: inference.reasoning.map(|effort| Reasoning { effort }),
             instructions: &instructions,
             input,
             tools: [],
@@ -204,10 +222,91 @@ fn build_input<'a>(messages: &'a [ChatMessage]) -> (String, Vec<InputItem<'a>>) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex::client::Client;
+    use crate::codex::{client::Client, InferenceOptions, ReasoningEffort};
     use crate::commit_msg::prompt::ChatMessage;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn inference_fields_are_independent_and_omitted_unless_selected() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/responses"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(sse(&[
+                (
+                    "response.output_text.delta",
+                    serde_json::json!({"type":"response.output_text.delta","delta":"draft"}),
+                ),
+                (
+                    "response.completed",
+                    serde_json::json!({"type":"response.completed"}),
+                ),
+            ])))
+            .mount(&server)
+            .await;
+        let client = Client::with_base(reqwest::Client::new(), "test", None, server.uri());
+        let mut cases = vec![
+            InferenceOptions::default(),
+            InferenceOptions {
+                fast: Some(true),
+                reasoning: None,
+            },
+            InferenceOptions {
+                fast: Some(false),
+                reasoning: None,
+            },
+        ];
+        for effort in [
+            ReasoningEffort::Low,
+            ReasoningEffort::Medium,
+            ReasoningEffort::High,
+            ReasoningEffort::Xhigh,
+        ] {
+            for fast in [None, Some(true), Some(false)] {
+                cases.push(InferenceOptions {
+                    fast,
+                    reasoning: Some(effort),
+                });
+            }
+        }
+        for options in &cases {
+            assert_eq!(
+                client
+                    .chat(
+                        "hidden-model",
+                        &[ChatMessage::system("rules"), ChatMessage::user("source")],
+                        *options
+                    )
+                    .await
+                    .unwrap(),
+                "draft"
+            );
+        }
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), cases.len());
+        for (request, options) in requests.iter().zip(cases) {
+            let body: serde_json::Value = request.body_json().unwrap();
+            assert_eq!(
+                body.get("service_tier"),
+                options
+                    .fast
+                    .map(|fast| serde_json::json!(if fast { "priority" } else { "default" }))
+                    .as_ref()
+            );
+            assert_eq!(
+                body.get("reasoning"),
+                options
+                    .reasoning
+                    .map(|effort| serde_json::json!({"effort": effort.to_string()}))
+                    .as_ref()
+            );
+            assert_eq!(body["model"], "hidden-model");
+            assert_eq!(body["instructions"], "rules");
+            assert_eq!(body["input"][0]["content"][0]["text"], "source");
+            assert_eq!(body["stream"], true);
+            assert_eq!(body["store"], false);
+        }
+    }
 
     fn sse(events: &[(&str, serde_json::Value)]) -> String {
         let mut out = String::new();
@@ -279,7 +378,11 @@ mod tests {
         let http = reqwest::Client::new();
         let client = Client::with_base(http, "at_xxx", Some("acct_abc"), server.uri());
         let out = client
-            .chat("gpt-5", &[ChatMessage::user("hi")])
+            .chat(
+                "gpt-5",
+                &[ChatMessage::user("hi")],
+                InferenceOptions::default(),
+            )
             .await
             .unwrap();
         assert_eq!(out, "feat: add x");
@@ -296,7 +399,11 @@ mod tests {
         let http = reqwest::Client::new();
         let client = Client::with_base(http, "at", None, server.uri());
         let err = client
-            .chat("gpt-5", &[ChatMessage::user("hi")])
+            .chat(
+                "gpt-5",
+                &[ChatMessage::user("hi")],
+                InferenceOptions::default(),
+            )
             .await
             .unwrap_err();
         assert!(matches!(err, Error::CodexAuth), "got {err:?}");
@@ -313,7 +420,11 @@ mod tests {
         let http = reqwest::Client::new();
         let client = Client::with_base(http, "at", None, server.uri());
         let err = client
-            .chat("gpt-5", &[ChatMessage::user("hi")])
+            .chat(
+                "gpt-5",
+                &[ChatMessage::user("hi")],
+                InferenceOptions::default(),
+            )
             .await
             .unwrap_err();
         assert!(
@@ -347,7 +458,11 @@ mod tests {
         let http = reqwest::Client::new();
         let client = Client::with_base(http, "at", None, server.uri());
         let err = client
-            .chat("gpt-5", &[ChatMessage::user("hi")])
+            .chat(
+                "gpt-5",
+                &[ChatMessage::user("hi")],
+                InferenceOptions::default(),
+            )
             .await
             .unwrap_err();
         match err {
@@ -378,7 +493,11 @@ mod tests {
         let http = reqwest::Client::new();
         let client = Client::with_base(http, "at", None, server.uri());
         let err = client
-            .chat("gpt-5", &[ChatMessage::user("hi")])
+            .chat(
+                "gpt-5",
+                &[ChatMessage::user("hi")],
+                InferenceOptions::default(),
+            )
             .await
             .unwrap_err();
         assert!(matches!(err, Error::EmptyModelResponse), "got {err:?}");

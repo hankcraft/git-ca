@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
+use crate::codex::ReasoningEffort;
+
 /// Authentication backend selectable on `auth login`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
 pub enum Provider {
@@ -33,6 +35,15 @@ pub struct Cli {
     /// Replace writing rules with a UTF-8 file for commit or PR drafting.
     #[arg(long, global = true, value_name = "PATH")]
     pub rules_file: Option<PathBuf>,
+
+    /// Codex fast processing (increased usage; requires model/account support).
+    #[arg(long, global = true, num_args = 0..=1, require_equals = true,
+        default_missing_value = "true", action = clap::ArgAction::Set)]
+    pub fast: Option<bool>,
+
+    /// Codex reasoning depth (model-dependent; overrides saved setting).
+    #[arg(long, global = true, value_enum)]
+    pub reasoning: Option<ReasoningEffort>,
 
     /// Accept generated text without opening the editor.
     #[arg(short = 'y', long = "yes", global = true)]
@@ -126,11 +137,78 @@ pub enum ConfigAction {
     },
     /// Print whether generated pull requests are created without opening the editor.
     GetAutoAcceptPr,
+    /// Set Codex fast processing (increased usage; requires model/account support).
+    SetCodexFast {
+        #[arg(action = clap::ArgAction::Set)]
+        value: bool,
+    },
+    /// Print Codex fast processing preference.
+    GetCodexFast,
+    /// Set Codex reasoning depth, or reset to the backend default.
+    SetCodexReasoning {
+        #[arg(value_parser = ["low", "medium", "high", "xhigh", "default"])]
+        value: String,
+    },
+    /// Print Codex reasoning preference.
+    GetCodexReasoning,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inference_flags_are_global_and_keep_absent_distinct_from_false() {
+        let cli = Cli::try_parse_from(["git-ca"]).unwrap();
+        assert_eq!((cli.fast, cli.reasoning), (None, None));
+        for args in [
+            vec!["git-ca", "--fast", "--reasoning", "low"],
+            vec!["git-ca", "--fast=true", "--reasoning", "low", "pr"],
+            vec!["git-ca", "pr", "--fast", "--reasoning", "low"],
+            vec![
+                "git-ca",
+                "pr",
+                "--source",
+                "commits",
+                "--fast",
+                "--reasoning",
+                "low",
+            ],
+        ] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            assert_eq!(
+                (cli.fast, cli.reasoning),
+                (Some(true), Some(ReasoningEffort::Low))
+            );
+        }
+        assert_eq!(
+            Cli::try_parse_from(["git-ca", "--fast=false", "pr"])
+                .unwrap()
+                .fast,
+            Some(false)
+        );
+        for args in [
+            vec!["git-ca", "--fast=bogus"],
+            vec!["git-ca", "pr", "--reasoning", "bogus"],
+            vec!["git-ca", "config", "set-codex-fast", "bogus"],
+            vec!["git-ca", "config", "set-codex-reasoning", "bogus"],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err());
+        }
+        for (value, effort) in [
+            ("low", ReasoningEffort::Low),
+            ("medium", ReasoningEffort::Medium),
+            ("high", ReasoningEffort::High),
+            ("xhigh", ReasoningEffort::Xhigh),
+        ] {
+            assert_eq!(
+                Cli::try_parse_from(["git-ca", "--reasoning", value])
+                    .unwrap()
+                    .reasoning,
+                Some(effort)
+            );
+        }
+    }
     use clap::Parser;
 
     #[test]

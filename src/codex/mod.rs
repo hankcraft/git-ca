@@ -1,10 +1,12 @@
 pub mod chat;
 pub mod client;
+pub mod inference;
 pub mod models;
 pub mod sse;
 
 pub use chat::FALLBACK_MODEL;
 pub use client::Client;
+pub use inference::{InferenceOptions, ReasoningEffort};
 
 use std::time::Duration;
 

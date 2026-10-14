@@ -4,6 +4,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::codex::ReasoningEffort;
 use crate::error::Result;
 
 /// User preferences persisted to `config.json`.
@@ -18,6 +19,10 @@ pub struct Config {
     /// Create generated pull requests without opening the editor.
     #[serde(default)]
     pub auto_accept_pr: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_fast: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_reasoning: Option<ReasoningEffort>,
 }
 
 impl Config {
@@ -88,6 +93,8 @@ mod tests {
             default_model: Some("gpt-4o".into()),
             auto_accept: true,
             auto_accept_pr: true,
+            codex_fast: Some(false),
+            codex_reasoning: Some(ReasoningEffort::Xhigh),
         };
         write_json_0600(&path, &cfg).unwrap();
 
@@ -95,6 +102,8 @@ mod tests {
         assert_eq!(loaded.default_model.as_deref(), Some("gpt-4o"));
         assert!(loaded.auto_accept);
         assert!(loaded.auto_accept_pr);
+        assert_eq!(loaded.codex_fast, Some(false));
+        assert_eq!(loaded.codex_reasoning, Some(ReasoningEffort::Xhigh));
 
         #[cfg(unix)]
         {
@@ -114,5 +123,21 @@ mod tests {
         assert!(cfg.default_model.is_none());
         assert!(!cfg.auto_accept);
         assert!(!cfg.auto_accept_pr);
+        assert_eq!(cfg.codex_fast, None);
+        assert_eq!(cfg.codex_reasoning, None);
+    }
+
+    #[test]
+    fn legacy_config_preserves_backend_defaults_and_rejects_invalid_settings() {
+        let cfg: Config =
+            serde_json::from_str(r#"{"default_model":"hidden","auto_accept":true}"#).unwrap();
+        assert_eq!(cfg.codex_fast, None);
+        assert_eq!(cfg.codex_reasoning, None);
+        let json = serde_json::to_value(cfg).unwrap();
+        assert!(json.get("codex_fast").is_none());
+        assert!(json.get("codex_reasoning").is_none());
+        for json in [r#"{"codex_fast":"true"}"#, r#"{"codex_reasoning":"bogus"}"#] {
+            assert!(serde_json::from_str::<Config>(json).is_err());
+        }
     }
 }

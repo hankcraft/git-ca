@@ -8,6 +8,9 @@ mod error;
 mod git;
 mod pr_msg;
 
+#[cfg(all(test, unix))]
+mod inference_tests;
+
 use clap::Parser;
 use cli::{AuthAction, Cli, Command, ConfigAction, PrSource, Provider};
 use commit_msg::prompt::ChatMessage;
@@ -27,10 +30,14 @@ async fn main() {
 }
 
 async fn run(cli: Cli) -> Result<()> {
+    let inference = codex::InferenceOptions {
+        fast: cli.fast,
+        reasoning: cli.reasoning,
+    };
     match cli.command {
-        None => commit(cli.model, cli.no_verify, cli.yes, cli.rules_file).await,
+        None => commit(cli.model, cli.no_verify, cli.yes, cli.rules_file, inference).await,
         Some(Command::Pr { base, source }) => {
-            pull_request(cli.model, cli.yes, base, source, cli.rules_file).await
+            pull_request(cli.model, cli.yes, base, source, cli.rules_file, inference).await
         }
         Some(Command::Auth { action }) => match action {
             AuthAction::Login { provider, account } => auth_login(provider, account).await,
@@ -48,6 +55,10 @@ async fn run(cli: Cli) -> Result<()> {
             ConfigAction::GetAutoAccept => config_get_auto_accept().await,
             ConfigAction::SetAutoAcceptPr { value } => config_set_auto_accept_pr(value).await,
             ConfigAction::GetAutoAcceptPr => config_get_auto_accept_pr().await,
+            ConfigAction::SetCodexFast { value } => config_set_codex_fast(value).await,
+            ConfigAction::GetCodexFast => config_get_codex_fast().await,
+            ConfigAction::SetCodexReasoning { value } => config_set_codex_reasoning(&value).await,
+            ConfigAction::GetCodexReasoning => config_get_codex_reasoning().await,
         },
     }
 }
@@ -57,6 +68,7 @@ async fn commit(
     no_verify: bool,
     yes: bool,
     rules_file: Option<std::path::PathBuf>,
+    inference: codex::InferenceOptions,
 ) -> Result<()> {
     git::ensure_work_tree()?;
     let diff = git::diff::staged_diff()?;
@@ -69,7 +81,7 @@ async fn commit(
     )?;
 
     let messages = commit_msg::prompt::build(&diff, custom_rules.as_deref());
-    let raw = generate_text(model_override, messages, "drafting message").await?;
+    let raw = generate_text(model_override, messages, "drafting message", inference).await?;
     let draft = commit_msg::strip_code_fences(&raw);
     if auto_accept {
         git::commit::commit_generated(&draft, no_verify)
@@ -84,6 +96,7 @@ async fn pull_request(
     base: Option<String>,
     source: PrSource,
     rules_file: Option<std::path::PathBuf>,
+    inference: codex::InferenceOptions,
 ) -> Result<()> {
     git::ensure_work_tree()?;
     git::pr::ensure_gh_available()?;
@@ -104,7 +117,7 @@ async fn pull_request(
     )?;
     let messages =
         pr_msg::prompt::build(source, &base.pr_base, &source_text, custom_rules.as_deref());
-    let raw = generate_text(model_override, messages, "drafting PR message").await?;
+    let raw = generate_text(model_override, messages, "drafting PR message", inference).await?;
     let mut draft = pr_msg::parse_json(&raw)?;
     if !auto_accept {
         draft = git::pr::edit_message(&draft)?;
@@ -186,10 +199,12 @@ async fn generate_text(
     model_override: Option<String>,
     messages: Vec<ChatMessage>,
     action: &str,
+    inference: codex::InferenceOptions,
 ) -> Result<String> {
     let http = http_client()?;
     let cfg = config::Config::load()?;
     let provider = active_provider()?;
+    let inference = resolve_inference(provider, inference, &cfg)?;
     let model = model_override
         .or_else(|| cfg.default_model.clone())
         .unwrap_or_else(|| match provider {
@@ -214,10 +229,29 @@ async fn generate_text(
             codex::call_authed(&http, |client| {
                 let model = model.clone();
                 let messages = messages.clone();
-                async move { client.chat(&model, &messages).await }
+                async move { client.chat(&model, &messages, inference).await }
             })
             .await?
         }
+    })
+}
+
+fn resolve_inference(
+    provider: Provider,
+    overrides: codex::InferenceOptions,
+    cfg: &config::Config,
+) -> Result<codex::InferenceOptions> {
+    if provider == Provider::Copilot {
+        if overrides.fast.is_some() || overrides.reasoning.is_some() {
+            return Err(Error::Config(
+                "--fast and --reasoning are Codex-only drafting options".into(),
+            ));
+        }
+        return Ok(codex::InferenceOptions::default());
+    }
+    Ok(codex::InferenceOptions {
+        fast: overrides.fast.or(cfg.codex_fast),
+        reasoning: overrides.reasoning.or(cfg.codex_reasoning),
     })
 }
 
@@ -468,7 +502,55 @@ fn config_list_lines(cfg: &config::Config) -> Vec<String> {
     }
     lines.push(format!("auto_accept: {}", cfg.auto_accept));
     lines.push(format!("auto_accept_pr: {}", cfg.auto_accept_pr));
+    lines.push(format!("codex_fast: {}", config_default(cfg.codex_fast)));
+    lines.push(format!(
+        "codex_reasoning: {}",
+        config_default(cfg.codex_reasoning)
+    ));
     lines
+}
+
+fn config_default(value: Option<impl std::fmt::Display>) -> String {
+    value
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "default (backend)".into())
+}
+
+async fn config_set_codex_fast(value: bool) -> Result<()> {
+    let mut cfg = config::Config::load()?;
+    cfg.codex_fast = Some(value);
+    cfg.save()?;
+    println!("Codex fast processing set to {value}.");
+    Ok(())
+}
+
+async fn config_get_codex_fast() -> Result<()> {
+    println!("{}", config_default(config::Config::load()?.codex_fast));
+    Ok(())
+}
+
+async fn config_set_codex_reasoning(value: &str) -> Result<()> {
+    let reasoning = if value == "default" {
+        None
+    } else {
+        Some(
+            <codex::ReasoningEffort as clap::ValueEnum>::from_str(value, false)
+                .map_err(Error::Config)?,
+        )
+    };
+    let mut cfg = config::Config::load()?;
+    cfg.codex_reasoning = reasoning;
+    cfg.save()?;
+    println!("Codex reasoning set to {}.", config_default(reasoning));
+    Ok(())
+}
+
+async fn config_get_codex_reasoning() -> Result<()> {
+    println!(
+        "{}",
+        config_default(config::Config::load()?.codex_reasoning)
+    );
+    Ok(())
 }
 
 async fn config_set_model(id: &str) -> Result<()> {
@@ -539,11 +621,110 @@ mod tests {
     use super::*;
 
     #[test]
+    fn inference_precedence_is_per_field_and_never_persists_overrides() {
+        use codex::{InferenceOptions, ReasoningEffort};
+        let cfg = config::Config {
+            codex_fast: Some(true),
+            codex_reasoning: Some(ReasoningEffort::High),
+            ..Default::default()
+        };
+        let before = serde_json::to_value(&cfg).unwrap();
+        for (overrides, expected) in [
+            (
+                InferenceOptions::default(),
+                InferenceOptions {
+                    fast: Some(true),
+                    reasoning: Some(ReasoningEffort::High),
+                },
+            ),
+            (
+                InferenceOptions {
+                    fast: Some(false),
+                    reasoning: None,
+                },
+                InferenceOptions {
+                    fast: Some(false),
+                    reasoning: Some(ReasoningEffort::High),
+                },
+            ),
+            (
+                InferenceOptions {
+                    fast: None,
+                    reasoning: Some(ReasoningEffort::Low),
+                },
+                InferenceOptions {
+                    fast: Some(true),
+                    reasoning: Some(ReasoningEffort::Low),
+                },
+            ),
+            (
+                InferenceOptions {
+                    fast: Some(false),
+                    reasoning: Some(ReasoningEffort::Xhigh),
+                },
+                InferenceOptions {
+                    fast: Some(false),
+                    reasoning: Some(ReasoningEffort::Xhigh),
+                },
+            ),
+        ] {
+            assert_eq!(
+                resolve_inference(Provider::Codex, overrides, &cfg).unwrap(),
+                expected
+            );
+        }
+        assert_eq!(serde_json::to_value(&cfg).unwrap(), before);
+        assert_eq!(
+            resolve_inference(
+                Provider::Codex,
+                InferenceOptions::default(),
+                &config::Config::default()
+            )
+            .unwrap(),
+            InferenceOptions::default()
+        );
+    }
+
+    #[test]
+    fn copilot_ignores_saved_codex_settings_but_rejects_explicit_flags() {
+        use codex::{InferenceOptions, ReasoningEffort};
+        let cfg = config::Config {
+            codex_fast: Some(true),
+            codex_reasoning: Some(ReasoningEffort::High),
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_inference(Provider::Copilot, InferenceOptions::default(), &cfg).unwrap(),
+            InferenceOptions::default()
+        );
+        for overrides in [
+            InferenceOptions {
+                fast: Some(true),
+                reasoning: None,
+            },
+            InferenceOptions {
+                fast: Some(false),
+                reasoning: None,
+            },
+            InferenceOptions {
+                fast: None,
+                reasoning: Some(ReasoningEffort::Low),
+            },
+        ] {
+            assert!(resolve_inference(Provider::Copilot, overrides, &cfg)
+                .unwrap_err()
+                .to_string()
+                .contains("Codex-only"));
+        }
+    }
+
+    #[test]
     fn formats_config_list_with_fallback_model() {
         let cfg = config::Config {
             default_model: None,
             auto_accept: false,
             auto_accept_pr: false,
+            ..Default::default()
         };
 
         assert_eq!(
@@ -552,6 +733,8 @@ mod tests {
                 format!("default_model: {} (fallback)", commit_msg::FALLBACK_MODEL),
                 "auto_accept: false".to_string(),
                 "auto_accept_pr: false".to_string(),
+                "codex_fast: default (backend)".to_string(),
+                "codex_reasoning: default (backend)".to_string(),
             ]
         );
     }
@@ -562,6 +745,7 @@ mod tests {
             default_model: None,
             auto_accept: true,
             auto_accept_pr: false,
+            ..Default::default()
         };
 
         assert!(!pr_auto_accept(false, &cfg));
@@ -571,6 +755,7 @@ mod tests {
             default_model: None,
             auto_accept: false,
             auto_accept_pr: true,
+            ..Default::default()
         };
 
         assert!(pr_auto_accept(false, &cfg));

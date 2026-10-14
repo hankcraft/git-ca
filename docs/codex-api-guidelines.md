@@ -158,6 +158,32 @@ Unlike OpenAI's standard `/v1/chat/completions` endpoint, the Codex Responses AP
 - **Reasoning State:** For stateless requests (`store: false`), request `reasoning.encrypted_content` and replay returned reasoning items on later turns.
 - **Prompt Cache:** Keep `prompt_cache_key` stable for a conversation/session.
 
+### Optional git-ca inference controls
+
+Fast processing increases usage and requires model/account support. Reasoning
+effort also depends on the selected model. The controls are independent:
+
+| Selection | Request field |
+| :--- | :--- |
+| `--fast` or `--fast=true` | `"service_tier": "priority"` |
+| `--fast=false` | `"service_tier": "default"` (Standard) |
+| `--reasoning <low\|medium\|high\|xhigh>` | `"reasoning": {"effort": "<value>"}` |
+| No flag or saved setting for a control | Omit that field; use backend default |
+
+For commit and PR create/update drafts with either source, each global flag
+overrides only its saved `codex_fast` or `codex_reasoning` value without
+persisting. `config set-codex-fast <true|false>` saves the speed preference;
+`config set-codex-reasoning <low|medium|high|xhigh|default>` saves effort or removes
+its override with `default`. Getters and `config list` display missing values as
+`default (backend)`. git-ca does not read Codex CLI configuration.
+
+Resolved fields remain unchanged across token refresh and transient retries.
+Backend rejection uses existing error handling without fallback. git-ca does
+not fetch the catalog during drafting or restrict explicit hidden model slugs;
+the backend performs final availability checks. Copilot drafting rejects explicit
+inference flags but ignores saved values. Auth, models, and config commands
+ignore valid global flags.
+
 ### Context Bounds
 
 Conversation history must remain bounded. Track the selected model's context window, compact before the request would exceed it, and cap large tool outputs before storing or replaying them. Codex normally auto-compacts near 90% of the model context window and applies model-specific truncation limits to tool output.

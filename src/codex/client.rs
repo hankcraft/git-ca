@@ -43,7 +43,10 @@ pub struct Client {
 
 impl Client {
     pub fn new(http: reqwest::Client, access_token: &str, account_id: Option<&str>) -> Self {
-        Self::with_base(http, access_token, account_id, API_BASE.into())
+        let base = API_BASE.to_string();
+        #[cfg(test)]
+        let base = std::env::var("GIT_CA_TEST_CODEX_BASE").unwrap_or(base);
+        Self::with_base(http, access_token, account_id, base)
     }
 
     pub fn with_base(
